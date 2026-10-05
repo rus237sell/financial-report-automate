@@ -1,0 +1,52 @@
+account_number,account_name,statement,line
+40000,Product Sales -- Wholesale,IS,Revenue
+40100,Product Sales -- DTC,IS,Revenue
+40200,Product Sales -- Foodservice,IS,Revenue
+40300,Shipping Income,IS,Revenue
+40400,Other Revenue,IS,Revenue
+50000,Raw Materials,IS,Cost of Goods Sold
+50100,Co-Man Production Fees,IS,Cost of Goods Sold
+50200,Freight In,IS,Cost of Goods Sold
+50300,Packaging,IS,Cost of Goods Sold
+60000,Salaries & Wages,IS,Salaries & Wages
+60100,Payroll Taxes,IS,Payroll Taxes & Benefits
+60200,Employee Benefits,IS,Payroll Taxes & Benefits
+61000,Rent,IS,Rent & Facilities
+61100,Utilities,IS,Rent & Facilities
+62000,Accounting & Legal,IS,Professional Fees
+62100,Consulting,IS,Professional Fees
+63000,Advertising & Marketing,IS,Sales & Marketing
+63100,Trade Spend,IS,Sales & Marketing
+64000,Depreciation Expense,IS,Depreciation & Amortization
+64100,Amortization Expense,IS,Depreciation & Amortization
+69500,Interest Expense,IS,Interest Expense
+66000,Insurance,IS,Other Operating Expenses
+66100,Office Supplies,IS,Other Operating Expenses
+66200,Travel & Entertainment,IS,Other Operating Expenses
+66300,Bank Charges,IS,Other Operating Expenses
+66400,Miscellaneous,IS,Other Operating Expenses
+70000,Interest Income,IS,"Other Income (Expense), net"
+70100,Gain on Sale of Assets,IS,"Other Income (Expense), net"
+71000,Other Expense,IS,"Other Income (Expense), net"
+10000,Cash -- Operating,BS,Cash & Cash Equivalents
+10100,Cash -- Payroll,BS,Cash & Cash Equivalents
+11000,Accounts Receivable,BS,Accounts Receivable
+12000,Inventory -- Raw Materials,BS,Inventory
+12100,Inventory -- Finished Goods,BS,Inventory
+13000,Prepaid Insurance,BS,Prepaid Expenses
+13100,Prepaid Rent,BS,Prepaid Expenses
+14000,Other Current Assets,BS,Other Current Assets
+15000,Machinery & Equipment,BS,"Property & Equipment, net"
+15100,Leasehold Improvements,BS,"Property & Equipment, net"
+15200,Accumulated Depreciation,BS,"Property & Equipment, net"
+16000,Deposits,BS,Other Noncurrent Assets
+20000,Accounts Payable,BS,Accounts Payable
+21000,Accrued Payroll,BS,Accrued Expenses
+21100,Accrued Expenses,BS,Accrued Expenses
+22000,Deferred Revenue,BS,Deferred Revenue
+23000,Current Portion of Long-Term Debt,BS,Current Portion of Long-Term Debt
+23100,Other Current Liabilities,BS,Other Current Liabilities
+24000,Long-Term Debt,BS,Long-Term Debt
+24100,Other Noncurrent Liabilities,BS,Other Noncurrent Liabilities
+30000,Common Stock,BS,Common Stock
+31000,Retained Earnings,BS,"Retained Earnings, Beginning"

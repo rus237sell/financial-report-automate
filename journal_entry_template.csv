@@ -1,0 +1,13 @@
+je_ref,area,account_number,account_name,debit,credit,description
+JE-01,Broker commissions,60500,Broker Commission Expense,0.00,,Accrue broker commissions earned for the month
+JE-01,Broker commissions,21100,Accrued Expenses,,0.00,
+JE-02,Co-man payroll,60010,Co-Man Wages -- Direct,0.00,,Approved hours x pay rates per time file
+JE-02,Co-man payroll,60110,Co-Man Payroll Taxes (11%),0.00,,Statutory load on co-man wages
+JE-02,Co-man payroll,21000,Accrued Payroll,,0.00,
+JE-03,Labor & overhead reallocation,50010,Production Labor,0.00,,Reallocate by channel revenue %
+JE-03,Labor & overhead reallocation,50110,Production Overhead,0.00,,Reallocate by channel revenue %
+JE-03,Labor & overhead reallocation,60000,Salaries & Wages,,0.00,Move production labor out of G&A
+JE-04,Loan interest,69500,Interest Expense,0.00,,Total booked must tie to this account
+JE-04,Loan interest,23000,Current Portion of Long-Term Debt,,0.00,
+JE-05,Prepaid amortization,64100,Amortization Expense,0.00,,Monthly amortization of prepaid policies
+JE-05,Prepaid amortization,13000,Prepaid Insurance,,0.00,
