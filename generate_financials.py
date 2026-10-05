@@ -34,6 +34,9 @@ Sample data (fictional company, no real client data):
         --input sample_input/trial_balance_sample.xlsx \\
         --prior-tb sample_input/trial_balance_prior_sample.csv \\
         --prior-label "December 2025" \\
+        --budget sample_input/budget_sample.csv \\
+        --budget-label "2026 Budget" \\
+        --db packet.db \\
         --period "January 2026" --company "Acme Foods Co."
 """
 
@@ -53,7 +56,9 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from ingest import detect_and_load, fuzzy_map
-from analyze import variance_rows, kpis, red_flags, narrative_bullets
+from analyze import (variance_rows, kpis, red_flags, narrative_bullets,
+                     budget_variance_rows, budget_flags, budget_bullet)
+import db as store
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +279,20 @@ class PacketData:
     tb_diff: float
     has_prior: bool
     prior_label: str
+    budget_totals: dict | None
+    budget_label: str
     analysis: dict          # variance rows, flags, narrative bullets, kpis
+
+
+def _resolve_line(acct, name, mapping):
+    """Map one account to (GL line, was_fuzzy). Exact number hit first."""
+    line = mapping.get(acct)
+    if line is None or line not in LINES:
+        fz = fuzzy_map(name)
+        if fz:
+            return fz, True
+        return None, False
+    return line, False
 
 
 def _aggregate_one(df, mapping, mode):
@@ -289,11 +307,7 @@ def _aggregate_one(df, mapping, mode):
     for _, r in df.iterrows():
         acct, name = r["account_number"], r["account_name"]
         amount, channel = float(r["amount"]), r["channel"]
-        line = mapping.get(acct)
-        fuzzy = False
-        if line is None or line not in LINES:
-            line = fuzzy_map(name)
-            fuzzy = line is not None
+        line, fuzzy = _resolve_line(acct, name, mapping)
         if line is None:
             unmapped.append((acct, name, amount))
             continue
@@ -311,7 +325,8 @@ def _aggregate_one(df, mapping, mode):
 
 
 def aggregate(company, period, df, report, mapping,
-              prior_df=None, prior_report=None, prior_label="Prior Period"):
+              prior_df=None, prior_report=None, prior_label="Prior Period",
+              budget_df=None, budget_report=None, budget_label="Budget"):
     line_totals, detail, unmapped, missing_channel, fuzzy_mapped = \
         _aggregate_one(df, mapping, report["mode"])
 
@@ -322,15 +337,30 @@ def aggregate(company, period, df, report, mapping,
         unmapped += [(a, n + " (prior file)", v) for a, n, v in p_unmapped]
         fuzzy_mapped += [(a, n + " (prior file)", l) for a, n, l in p_fuzzy]
 
+    budget_totals = None
+    if budget_df is not None:
+        budget_totals, _, b_unmapped, _, b_fuzzy = _aggregate_one(
+            budget_df, mapping, budget_report["mode"])
+        unmapped += [(a, n + " (budget file)", v) for a, n, v in b_unmapped]
+        fuzzy_mapped += [(a, n + " (budget file)", l) for a, n, l in b_fuzzy]
+
     tb_diff = float(df["amount"].sum()) if report["mode"] == "signed" else 0.0
 
     cur_k = kpis(line_totals)
     prior_k = kpis(prior_totals) if prior_totals else None
+    bullets = narrative_bullets(line_totals, prior_totals, cur_k,
+                                prior_k, prior_label)
+    b_bullet = budget_bullet(line_totals, budget_totals, budget_label)
+    if b_bullet:
+        bullets.append(b_bullet)
+    flags = red_flags(line_totals, prior_totals, cur_k, prior_k)
+    flags += budget_flags(line_totals, budget_totals)
+    flags.sort(key=lambda f: {"high": 0, "medium": 1, "low": 2}[f[0]])
     analysis = {
         "variance": variance_rows(line_totals, prior_totals),
-        "flags": red_flags(line_totals, prior_totals, cur_k, prior_k),
-        "bullets": narrative_bullets(line_totals, prior_totals, cur_k,
-                                     prior_k, prior_label),
+        "budget_variance": budget_variance_rows(line_totals, budget_totals),
+        "flags": flags,
+        "bullets": bullets,
         "cur_k": cur_k,
         "prior_k": prior_k,
     }
@@ -342,6 +372,7 @@ def aggregate(company, period, df, report, mapping,
         detail=detail, unmapped=unmapped, fuzzy_mapped=fuzzy_mapped,
         missing_channel=missing_channel, tb_diff=tb_diff,
         has_prior=prior_df is not None, prior_label=prior_label,
+        budget_totals=budget_totals, budget_label=budget_label,
         analysis=analysis,
     )
 
@@ -670,6 +701,38 @@ def build_analysis(wb, data):
         r += 1
 
     r += 1
+    if data.budget_totals is not None:
+        ws.cell(row=r, column=1,
+                value=f"Budget vs Actual ({data.budget_label})").font = BOLD_FONT
+        r += 1
+        for i, h in enumerate(
+                ["GL line", "Actual", "Budget", "Variance $", "Variance %"], 1):
+            ws.cell(row=r, column=i, value=h)
+        style_header_row(ws, r, 5)
+        r += 1
+        for v in data.analysis["budget_variance"]:
+            ws.cell(row=r, column=1, value=v["line"]).font = BODY_FONT
+            ws.cell(row=r, column=1).border = THIN_BORDER
+            ws.cell(row=r, column=1).alignment = LEFT
+            a = ws.cell(row=r, column=2, value=v["actual"])
+            money(a)
+            b = ws.cell(row=r, column=3, value=v["budget"])
+            money(b)
+            ch = ws.cell(row=r, column=4, value=v["change"])
+            money(ch)
+            pc = ws.cell(row=r, column=5)
+            pc.value = v["pct"] if v["pct"] is not None else "n/a"
+            if isinstance(pc.value, float):
+                pc.number_format = '0.0%'
+            pc.border = THIN_BORDER
+            pc.alignment = CENTER
+            if v["flagged"]:
+                for col in range(1, 6):
+                    ws.cell(row=r, column=col).fill = PatternFill(
+                        "solid", fgColor="FCE4D6")
+            r += 1
+        r += 1
+
     ws.cell(row=r, column=1, value="Key findings").font = BOLD_FONT
     r += 1
     for b in data.analysis["bullets"]:
@@ -1275,6 +1338,13 @@ def parse_args(argv=None):
                    help="Prior-period statement file: unlocks variance analysis + SCF")
     p.add_argument("--prior-label", default="Prior Period",
                    help="Label for the prior period, e.g. 'December 2025'")
+    p.add_argument("--budget", default=None,
+                   help="Budget statement file: unlocks budget-vs-actual analysis")
+    p.add_argument("--budget-label", default="Budget",
+                   help="Label for the budget, e.g. '2026 Budget'")
+    p.add_argument("--db", default=None,
+                   help="Persist the SQLite store to this file for ad-hoc SQL"
+                        " queries (default: in-memory)")
     p.add_argument("--output", default=None, help="Output workbook path")
     p.add_argument("--company", default="Acme Foods Co.", help="Company name for headers")
     p.add_argument("--period", default="January 2026",
@@ -1292,9 +1362,36 @@ def main(argv=None):
     prior_df, prior_report = None, None
     if args.prior_tb:
         prior_df, prior_report = detect_and_load(args.prior_tb)
+    budget_df, budget_report = None, None
+    if args.budget:
+        budget_df, budget_report = detect_and_load(args.budget)
 
     data = aggregate(args.company, args.period, df, report, mapping,
-                     prior_df, prior_report, args.prior_label)
+                     prior_df, prior_report, args.prior_label,
+                     budget_df, budget_report, args.budget_label)
+
+    # --- SQL store: every period lands in one queryable database ----------
+    def _resolve(acct, name):
+        return _resolve_line(acct, name, mapping)
+
+    conn = store.connect(args.db)
+    store.load_mapping(conn, mapping, LINES)
+    store.load_period(conn, args.period, df, report, _resolve, LINES,
+                      kind="actual")
+    if prior_df is not None:
+        store.load_period(conn, args.prior_label, prior_df, prior_report,
+                          _resolve, LINES, kind="prior")
+        # The Analysis tab's variance table is produced by SQL.
+        data.analysis["variance"] = store.variance_rows(
+            conn, args.period, args.prior_label)
+    if budget_df is not None:
+        store.load_period(conn, args.budget_label, budget_df, budget_report,
+                          _resolve, LINES, kind="budget")
+        data.analysis["budget_variance"] = store.budget_variance_rows(
+            conn, args.period)
+    if args.db:
+        print(f"  SQLite store saved: {args.db}")
+    conn.close()
 
     wb = Workbook()
     build_monthly_close(wb, data)
@@ -1322,6 +1419,18 @@ def main(argv=None):
     print(f"  Fuzzy-mapped      : {len(data.fuzzy_mapped)}")
     print(f"  Missing channels  : {len(data.missing_channel)}")
     print(f"  Net income        : {ni:,.0f}")
+    if data.budget_totals is not None:
+        b_ni = (data.budget_totals.get("Revenue", 0)
+                - data.budget_totals.get("Cost of Goods Sold", 0)
+                - sum(data.budget_totals.get(l, 0) for l in [
+                    "Salaries & Wages", "Payroll Taxes & Benefits",
+                    "Rent & Facilities", "Professional Fees",
+                    "Sales & Marketing", "Depreciation & Amortization",
+                    "Interest Expense", "Other Operating Expenses"])
+                + data.budget_totals.get("Other Income (Expense), net", 0))
+        b_pct = (ni - b_ni) / abs(b_ni) if b_ni else None
+        print(f"  Budget net income : {b_ni:,.0f}"
+              + (f"  (actual {b_pct:+.1%} vs budget)" if b_pct is not None else ""))
     print("  Key findings:")
     for b in data.analysis["bullets"]:
         print(f"    - {b}")

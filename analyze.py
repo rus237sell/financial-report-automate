@@ -43,7 +43,7 @@ def variance_rows(cur: dict, prior: dict | None,
             "change": change, "pct": pct, "flagged": flagged,
         })
     # Biggest absolute movers first.
-    rows.sort(key=lambda r: abs(r["change"]), reverse=True)
+    rows.sort(key=lambda r: (-abs(r["change"]), r["line"]))
     return rows
 
 
@@ -133,6 +133,66 @@ def red_flags(cur: dict, prior: dict | None,
 
 def _fmt_money(x: float) -> str:
     return f"${x:,.0f}"
+
+
+def budget_variance_rows(cur: dict, budget: dict | None,
+                         pct_threshold: float = 0.15,
+                         abs_threshold: float = 2000.0) -> list[dict]:
+    """Actual vs budget by GL line, mirroring variance_rows."""
+    rows = []
+    for line in cur:
+        c = cur.get(line, 0.0)
+        b = (budget or {}).get(line, 0.0)
+        if c == 0 and b == 0:
+            continue
+        change = c - b
+        pct = _pct(c, b)
+        flagged = (
+            budget is not None
+            and abs(change) >= abs_threshold
+            and pct is not None
+            and abs(pct) >= pct_threshold
+        )
+        rows.append({"line": line, "actual": c, "budget": b,
+                     "change": change, "pct": pct, "flagged": flagged})
+    rows.sort(key=lambda r: (-abs(r["change"]), r["line"]))
+    return rows
+
+
+def budget_flags(cur: dict, budget: dict | None) -> list[tuple[str, str]]:
+    """Flag material budget misses: (severity, message)."""
+    flags: list[tuple[str, str]] = []
+    if budget is None:
+        return flags
+    cur_k, bud_k = kpis(cur), kpis(budget)
+    ni_pct = _pct(cur_k["_net_income"], bud_k["_net_income"])
+    if ni_pct is not None and abs(ni_pct) >= 0.10:
+        verb = "beat" if ni_pct > 0 else "missed"
+        flags.append(("medium" if abs(ni_pct) < 0.25 else "high",
+                      f"Net income {verb} budget by {abs(ni_pct):.1%}."))
+    for r in budget_variance_rows(cur, budget):
+        if r["flagged"] and r["line"] not in ("Revenue", "Net Income"):
+            d = "over" if r["change"] > 0 else "under"
+            pct = f"{abs(r['pct']):.1%}" if r["pct"] is not None else "n/a"
+            flags.append(("low",
+                          f"{r['line']} came in {d} budget by {pct} "
+                          f"({_fmt_money(abs(r['change']))})."))
+    return flags
+
+
+def budget_bullet(cur: dict, budget: dict | None,
+                  budget_label: str = "budget") -> str | None:
+    """One-line budget verdict for the narrative, or None without a budget."""
+    if budget is None:
+        return None
+    cur_k, bud_k = kpis(cur), kpis(budget)
+    ni_pct = _pct(cur_k["_net_income"], bud_k["_net_income"])
+    if ni_pct is None:
+        return None
+    verb = "beat" if ni_pct >= 0 else "missed"
+    return (f"Against {budget_label}, net income of {_fmt_money(cur_k['_net_income'])} "
+            f"{verb} by {abs(ni_pct):.1%} "
+            f"(budgeted {_fmt_money(bud_k['_net_income'])}).")
 
 
 def narrative_bullets(cur: dict, prior: dict | None,

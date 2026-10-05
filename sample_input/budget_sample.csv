@@ -1,0 +1,52 @@
+Account Number,Account Name,Balance
+40000,Product Sales -- Wholesale,-501800.0
+40100,Product Sales -- DTC,-202650.0
+40200,Product Sales -- Foodservice,-91675.0
+40300,Shipping Income,-17370.0
+40400,Other Revenue,-6272.5
+50000,Raw Materials,300700.0
+50100,Co-Man Production Fees,85360.0
+50200,Freight In,23765.0
+50300,Packaging,18430.0
+60000,Salaries & Wages,142100.0
+60100,Payroll Taxes,15631.0
+60200,Employee Benefits,12152.0
+61000,Rent,17640.0
+61100,Utilities,4116.0
+62000,Accounting & Legal,9310.0
+62100,Consulting,5880.0
+63000,Advertising & Marketing,21560.0
+63100,Trade Spend,14210.0
+64000,Depreciation Expense,7644.0
+64100,Amortization Expense,3136.0
+69500,Interest Expense,11025.0
+66000,Insurance,3528.0
+66100,Office Supplies,2744.0
+66200,Travel & Entertainment,4018.0
+66300,Bank Charges,931.0
+66400,Miscellaneous,1715.0
+70000,Interest Income,-1176.0
+70100,Gain on Sale of Assets,-2450.0
+71000,Other Expense,4802.0
+10000,Cash -- Operating,135185.0
+10100,Cash -- Payroll,23750.0
+11000,Accounts Receivable,180808.0
+12000,Inventory -- Raw Materials,55680.0
+12100,Inventory -- Finished Goods,71520.0
+13000,Prepaid Insurance,14400.0
+13100,Prepaid Rent,9000.0
+14000,Other Current Assets,6200.0
+15000,Machinery & Equipment,210000.0
+15100,Leasehold Improvements,45000.0
+15200,Accumulated Depreciation,-93411.0
+16000,Deposits,12000.0
+20000,Accounts Payable,-94752.0
+21000,Accrued Payroll,-20855.0
+21100,Accrued Expenses,-12416.0
+22000,Deferred Revenue,-17100.0
+23000,Current Portion of Long-Term Debt,-36000.0
+23100,Other Current Liabilities,-7400.0
+24000,Long-Term Debt,-188700.0
+24100,Other Noncurrent Liabilities,-9600.0
+30000,Common Stock,-50000.0
+31000,Retained Earnings,-120312.5
