@@ -1,33 +1,39 @@
 #!/usr/bin/env python3
 """
-generate_financials.py -- Monthly financial packet builder.
+generate_financials.py -- Monthly financial packet builder (v2).
 
-Takes a trial-balance Excel export (QBO-style: Account Number, Account Name,
-Debit, Credit, Channel/Class) and builds a formatted, board-ready financial
-packet workbook:
+Takes ANY financial-statement export -- trial balance, P&L, or balance sheet,
+Excel or CSV, whatever the columns are called -- and builds a formatted,
+board-ready financial packet workbook. The importer (ingest.py) sniffs the
+file's layout and sign convention automatically; accounts map to GL lines
+by account number with fuzzy name matching as fallback.
 
+Tabs:
     Monthly Close   month-end close checklist (JE areas, owners, status)
-    Raw Input       the trial balance exactly as imported
+    Raw Input       the statement exactly as imported (layout adapts to input)
     Adjustments     editable KPI targets + grading bands (the grading scale)
     Dashboard       KPI scorecard with live A-F grades driven by Adjustments
+    Analysis        auto-analyzer: variance vs prior, narrative, red flags
     P&L             income statement (subtotals are live Excel formulas)
     Detailed P&L    account-level detail grouped by statement line
     Balance Sheet   classified balance sheet (with balance check)
     SCF             indirect-method statement of cash flows
-    Checks          data-quality checks (TB balance, unmapped accts, tie-outs)
+    Checks          data-quality checks (import detection, TB balance,
+                    unmapped accts, fuzzy matches, channel gaps, tie-outs)
 
 The grading scale on the Adjustments tab is fully user-editable: change a
 target or a grade band and every grade on the Dashboard recalculates.
 
 Usage:
     python generate_financials.py --input trial_balance.xlsx --period "January 2026"
-    python generate_financials.py --input tb.xlsx --mapping gl_mapping.csv \\
-        --prior-tb tb_prior.xlsx --output packet_Jan2026.xlsx \\
-        --company "Acme Foods Co." --period "January 2026"
+    python generate_financials.py --input pnl_export.csv --prior-tb tb_dec.csv \\
+        --prior-label "December 2025" --output packet_Jan2026.xlsx
 
 Sample data (fictional company, no real client data):
     python generate_financials.py \\
         --input sample_input/trial_balance_sample.xlsx \\
+        --prior-tb sample_input/trial_balance_prior_sample.csv \\
+        --prior-label "December 2025" \\
         --period "January 2026" --company "Acme Foods Co."
 """
 
@@ -45,6 +51,9 @@ from openpyxl import Workbook
 from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.datavalidation import DataValidation
+
+from ingest import detect_and_load, fuzzy_map
+from analyze import variance_rows, kpis, red_flags, narrative_bullets
 
 
 # ---------------------------------------------------------------------------
@@ -236,53 +245,6 @@ def money_calc(cell):
 # Loading & aggregation
 # ---------------------------------------------------------------------------
 
-def load_trial_balance(path):
-    """Read a QBO-style trial balance export into a normalized DataFrame."""
-    df = pd.read_excel(path, engine="openpyxl")
-    cols = {c.strip().lower(): c for c in df.columns}
-
-    def pick(*names):
-        for n in names:
-            if n in cols:
-                return cols[n]
-        return None
-
-    acct_col = pick("account number", "account_number", "account no", "number")
-    name_col = pick("account name", "account_name", "account", "name")
-    debit_col = pick("debit")
-    credit_col = pick("credit")
-    channel_col = pick("channel", "class", "location", "department")
-    balance_col = pick("balance", "amount")
-
-    if acct_col is None or name_col is None:
-        raise ValueError(
-            f"Could not find account columns in {path}. "
-            f"Columns seen: {list(df.columns)}"
-        )
-
-    out = pd.DataFrame()
-    out["account_number"] = df[acct_col].astype(str).str.strip()
-    out["account_name"] = df[name_col].astype(str).str.strip()
-    if debit_col and credit_col:
-        out["debit"] = pd.to_numeric(df[debit_col], errors="coerce").fillna(0)
-        out["credit"] = pd.to_numeric(df[credit_col], errors="coerce").fillna(0)
-        out["signed"] = out["debit"] - out["credit"]  # debits positive
-    elif balance_col:
-        out["signed"] = pd.to_numeric(df[balance_col], errors="coerce").fillna(0)
-        out["debit"] = out["signed"].clip(lower=0)
-        out["credit"] = (-out["signed"]).clip(lower=0)
-    else:
-        raise ValueError("Need Debit/Credit columns or a Balance column.")
-    out["channel"] = (
-        df[channel_col].astype(str).str.strip()
-        if channel_col else ""
-    ).replace({"nan": "", "None": "", "NaT": ""})
-    # Drop fully blank rows.
-    out = out[~((out["account_number"] == "") & (out["signed"] == 0))].copy()
-    out = out.reset_index(drop=True)
-    return out
-
-
 def load_mapping(path):
     """Load account_number -> statement line mapping from CSV."""
     mapping = {}
@@ -300,41 +262,87 @@ class PacketData:
     company: str
     period: str
     tb: pd.DataFrame
+    report: dict            # ingest report for the current file
     prior_tb: pd.DataFrame | None
+    prior_report: dict | None
     line_totals: dict
+    prior_totals: dict | None
     detail: dict  # line -> list of (acct, name, amount, channel)
     unmapped: list
+    fuzzy_mapped: list      # (acct, name, line) matched by name, worth a review
     missing_channel: list
     tb_diff: float
     has_prior: bool
+    prior_label: str
+    analysis: dict          # variance rows, flags, narrative bullets, kpis
 
 
-def aggregate(company, period, tb, mapping, prior_tb=None):
+def _aggregate_one(df, mapping, mode):
+    """Aggregate one normalized file. In 'presentation' mode the sign is
+    recovered per-account from the GL mapping (signed = amount * line_sign)."""
     line_totals = defaultdict(float)
     detail = defaultdict(list)
     unmapped = []
     missing_channel = []
+    fuzzy_mapped = []
 
-    for _, r in tb.iterrows():
-        acct, name, signed, channel = (
-            r["account_number"], r["account_name"], r["signed"], r["channel"]
-        )
+    for _, r in df.iterrows():
+        acct, name = r["account_number"], r["account_name"]
+        amount, channel = float(r["amount"]), r["channel"]
         line = mapping.get(acct)
+        fuzzy = False
         if line is None or line not in LINES:
-            unmapped.append((acct, name, signed))
+            line = fuzzy_map(name)
+            fuzzy = line is not None
+        if line is None:
+            unmapped.append((acct, name, amount))
             continue
+        signed = amount if mode == "signed" else amount * LINES[line].sign
         presented = signed * LINES[line].sign
         line_totals[line] += presented
         detail[line].append((acct, name, presented, channel))
+        if fuzzy:
+            fuzzy_mapped.append((acct, name, line))
         if LINES[line].statement == "IS" and not channel:
             missing_channel.append((acct, name, presented))
 
-    tb_diff = float(tb["signed"].sum())
+    return (dict(line_totals), dict(detail), unmapped, missing_channel,
+            fuzzy_mapped)
+
+
+def aggregate(company, period, df, report, mapping,
+              prior_df=None, prior_report=None, prior_label="Prior Period"):
+    line_totals, detail, unmapped, missing_channel, fuzzy_mapped = \
+        _aggregate_one(df, mapping, report["mode"])
+
+    prior_totals = None
+    if prior_df is not None:
+        prior_totals, _, p_unmapped, _, p_fuzzy = _aggregate_one(
+            prior_df, mapping, prior_report["mode"])
+        unmapped += [(a, n + " (prior file)", v) for a, n, v in p_unmapped]
+        fuzzy_mapped += [(a, n + " (prior file)", l) for a, n, l in p_fuzzy]
+
+    tb_diff = float(df["amount"].sum()) if report["mode"] == "signed" else 0.0
+
+    cur_k = kpis(line_totals)
+    prior_k = kpis(prior_totals) if prior_totals else None
+    analysis = {
+        "variance": variance_rows(line_totals, prior_totals),
+        "flags": red_flags(line_totals, prior_totals, cur_k, prior_k),
+        "bullets": narrative_bullets(line_totals, prior_totals, cur_k,
+                                     prior_k, prior_label),
+        "cur_k": cur_k,
+        "prior_k": prior_k,
+    }
+
     return PacketData(
-        company=company, period=period, tb=tb, prior_tb=prior_tb,
-        line_totals=dict(line_totals), detail=dict(detail),
-        unmapped=unmapped, missing_channel=missing_channel,
-        tb_diff=tb_diff, has_prior=prior_tb is not None,
+        company=company, period=period, tb=df, report=report,
+        prior_tb=prior_df, prior_report=prior_report,
+        line_totals=line_totals, prior_totals=prior_totals,
+        detail=detail, unmapped=unmapped, fuzzy_mapped=fuzzy_mapped,
+        missing_channel=missing_channel, tb_diff=tb_diff,
+        has_prior=prior_df is not None, prior_label=prior_label,
+        analysis=analysis,
     )
 
 
@@ -398,21 +406,32 @@ def build_monthly_close(wb, data):
 def build_raw_input(wb, data):
     ws = wb.create_sheet("Raw Input")
     ws.sheet_properties.tabColor = "808080"
-    cols = ["Account Number", "Account Name", "Debit", "Credit", "Channel"]
+    signed_mode = data.report["mode"] == "signed"
+    cols = (["Account Number", "Account Name", "Debit", "Credit", "Channel"]
+            if signed_mode else
+            ["Account Number", "Account Name", "Amount", "Channel"])
+    ncols = len(cols)
     for i, h in enumerate(cols, 1):
         ws.cell(row=1, column=i, value=h)
-    style_header_row(ws, 1, 5)
+    style_header_row(ws, 1, ncols)
     for i, r in data.tb.iterrows():
         rr = i + 2
         ws.cell(row=rr, column=1, value=r["account_number"]).border = THIN_BORDER
         ws.cell(row=rr, column=2, value=r["account_name"]).border = THIN_BORDER
-        d = ws.cell(row=rr, column=3, value=r["debit"])
-        money(d)
-        c = ws.cell(row=rr, column=4, value=r["credit"])
-        money(c)
-        ws.cell(row=rr, column=5, value=r["channel"]).border = THIN_BORDER
-        ws.cell(row=rr, column=5).alignment = LEFT
-    widths = [16, 42, 16, 16, 20]
+        if signed_mode:
+            amt = float(r["amount"])
+            d = ws.cell(row=rr, column=3, value=max(amt, 0))
+            money(d)
+            c = ws.cell(row=rr, column=4, value=max(-amt, 0))
+            money(c)
+            ch_col = 5
+        else:
+            a = ws.cell(row=rr, column=3, value=float(r["amount"]))
+            money(a)
+            ch_col = 4
+        ws.cell(row=rr, column=ch_col, value=r["channel"]).border = THIN_BORDER
+        ws.cell(row=rr, column=ch_col).alignment = LEFT
+    widths = [16, 42, 16, 16, 20][:ncols]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[chr(64 + i)].width = w
     ws.freeze_panes = "A2"
@@ -584,6 +603,106 @@ def build_dashboard(wb, data):
                    font=Font(color="9C0006")))
 
     for col, w in zip("ABCDE", [28, 14, 14, 10, 42]):
+        ws.column_dimensions[col].width = w
+
+
+def build_analysis(wb, data):
+    """Auto-analyzer output: variance table, narrative bullets, red flags."""
+    ws = wb.create_sheet("Analysis")
+    ws.sheet_properties.tabColor = "7B1FA2"
+    style_title_block(
+        ws,
+        f"{data.company} -- Automatic Analysis",
+        f"{data.period}"
+        + (f" vs {data.prior_label}" if data.has_prior
+           else " -- provide --prior-tb for variance analysis"),
+        5,
+    )
+
+    r = 4
+    ws.cell(row=r, column=1, value="Variance by GL line").font = BOLD_FONT
+    r += 1
+    for i, h in enumerate(
+            ["GL line", "Current", data.prior_label if data.has_prior else "Prior (N/A)",
+             "$ Change", "% Change"], 1):
+        ws.cell(row=r, column=i, value=h)
+    style_header_row(ws, r, 5)
+    r += 1
+
+    for v in data.analysis["variance"]:
+        if v["current"] == 0 and v["prior"] == 0:
+            continue
+        ws.cell(row=r, column=1, value=v["line"]).font = BODY_FONT
+        ws.cell(row=r, column=1).border = THIN_BORDER
+        ws.cell(row=r, column=1).alignment = LEFT
+        c0 = ws.cell(row=r, column=2, value=v["current"])
+        money(c0)
+        c1 = ws.cell(row=r, column=3,
+                     value=v["prior"] if data.has_prior else "N/A")
+        if data.has_prior:
+            money(c1)
+        else:
+            c1.alignment = CENTER
+            c1.font = Font(name="Calibri", size=10, italic=True, color=GRAY)
+            c1.border = THIN_BORDER
+        ch = ws.cell(row=r, column=4,
+                     value=v["change"] if data.has_prior else "N/A")
+        pc = ws.cell(row=r, column=5)
+        if data.has_prior:
+            money(ch)
+            pc.value = v["pct"] if v["pct"] is not None else "n/a"
+            if isinstance(pc.value, float):
+                pc.number_format = '0.0%'
+            pc.border = THIN_BORDER
+            pc.alignment = CENTER
+            if v["flagged"]:
+                for col in range(1, 6):
+                    ws.cell(row=r, column=col).fill = PatternFill(
+                        "solid", fgColor="FCE4D6")
+        else:
+            ch.alignment = CENTER
+            ch.font = Font(name="Calibri", size=10, italic=True, color=GRAY)
+            ch.border = THIN_BORDER
+            pc.value = "N/A"
+            pc.alignment = CENTER
+            pc.font = Font(name="Calibri", size=10, italic=True, color=GRAY)
+            pc.border = THIN_BORDER
+        r += 1
+
+    r += 1
+    ws.cell(row=r, column=1, value="Key findings").font = BOLD_FONT
+    r += 1
+    for b in data.analysis["bullets"]:
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
+        cell = ws.cell(row=r, column=1, value="\u2022  " + b)
+        cell.font = BODY_FONT
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.row_dimensions[r].height = 30
+        r += 1
+
+    r += 1
+    ws.cell(row=r, column=1, value="Red flags").font = BOLD_FONT
+    r += 1
+    flags = data.analysis["flags"]
+    if not flags:
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
+        cell = ws.cell(row=r, column=1, value="\u2022  No red flags -- all clear.")
+        cell.font = Font(name="Calibri", size=11, color="2E7D32")
+        cell.alignment = LEFT
+    sev_fill = {"high": PatternFill("solid", fgColor=RED),
+                "medium": PatternFill("solid", fgColor=YELLOW),
+                "low": PatternFill("solid", fgColor="E2EFDA")}
+    for sev, msg in flags:
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
+        cell = ws.cell(row=r, column=1,
+                       value=f"\u2022  [{sev.upper()}] {msg}")
+        cell.font = BOLD_FONT
+        cell.fill = sev_fill.get(sev, PatternFill())
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.row_dimensions[r].height = 24
+        r += 1
+
+    for col, w in zip("ABCDE", [36, 18, 18, 18, 14]):
         ws.column_dimensions[col].width = w
 
 
@@ -759,10 +878,15 @@ def build_balance_sheet(wb, data):
     if data.has_prior:
         pm = defaultdict(float)
         # reuse the mapping already applied to the current TB
+        prior_mode = (data.prior_report or {}).get("mode", "signed")
         for _, r in data.prior_tb.iterrows():
             line = _MAPPING_CACHE.get(str(r["account_number"]).strip())
+            if not line or line not in LINES:
+                line = fuzzy_map(str(r["account_name"]))
             if line and line in LINES:
-                pm[line] += float(r["signed"]) * LINES[line].sign
+                amt = float(r["amount"])
+                signed = amt if prior_mode == "signed" else amt * LINES[line].sign
+                pm[line] += signed * LINES[line].sign
         prior_vals = dict(pm)
 
     ws.cell(row=4, column=1, value="ASSETS").font = BOLD_FONT
@@ -891,6 +1015,7 @@ def build_scf(wb, data):
     style_header_row(ws, 4, 2)
 
     R = BS_ROWS
+    PR = PL_ROWS
     r = 5
     ws.cell(row=r, column=1, value="Cash flows from operating activities").font = BOLD_FONT
     r += 1
@@ -954,7 +1079,7 @@ def build_scf(wb, data):
         line("Purchases of property & equipment",
              formula=f"=-((\'Balance Sheet\'!B{R['Property & Equipment, net']}"
                      f"-\'Balance Sheet\'!C{R['Property & Equipment, net']})"
-                     f"+\'P&L\'!B{R['Depreciation & Amortization']})")
+                     f"+\'P&L\'!B{PR['Depreciation & Amortization']})")
     else:
         line("Purchases of property & equipment")
     inv_end = r - 1
@@ -1033,40 +1158,66 @@ def build_checks(wb, data):
         ws.cell(row=3, column=i, value=h)
     style_header_row(ws, 3, 4)
 
+    rep = data.report
+    signed_mode = rep["mode"] == "signed"
     rows = [
+        ("Import detection",
+         f"{rep['file_type']} ({rep['mode']} mode)",
+         '"PASS"',
+         "; ".join(rep["assumptions"])),
         ("Trial balance out-of-balance (debits - credits)",
-         "=SUM('Raw Input'!C2:C10000)-SUM('Raw Input'!D2:D10000)",
-         '=IF(ABS(B4)<0.01,"PASS","FLAG")',
+         ("=SUM('Raw Input'!C2:C10000)-SUM('Raw Input'!D2:D10000)"
+          if signed_mode else "N/A -- statement export"),
+         None,  # status formula filled in below
          "Debits must equal credits before the packet means anything."),
         ("Unmapped accounts (no GL line)",
          len(data.unmapped),
-         '=IF(B5=0,"PASS","FLAG")',
-         "; ".join(f"{a} {n}" for a, n, _ in data.unmapped[:5]) or "All accounts mapped."),
+         None,
+         "; ".join(f"{a} {n}" for a, n, _ in data.unmapped[:5])
+         or "All accounts mapped."),
+        ("Accounts mapped by fuzzy name match (review)",
+         len(data.fuzzy_mapped),
+         None,
+         "; ".join(f"{a} -> {l}" for a, _, l in data.fuzzy_mapped[:5])
+         or "Every account hit the mapping file exactly."),
         ("P&L accounts missing channel/class",
          len(data.missing_channel),
-         '=IF(B6=0,"PASS","REVIEW")',
+         None,
          "; ".join(f"{a} {n}" for a, n, _ in data.missing_channel[:5])
          or "Every P&L account has channel data."),
         ("Cash & cash equivalents balance",
          data.line_totals.get("Cash & Cash Equivalents", 0),
-         '=IF(B7>=0,"PASS","FLAG")',
+         None,
          "Tie to the bank reconciliation; investigate negatives."),
         ("Net income tie-out (P&L vs Balance Sheet)",
          "='P&L'!B22-'Balance Sheet'!B28",
-         '=IF(ABS(B8)<0.01,"PASS","FLAG")',
+         None,
          "Must be zero."),
         ("Balance sheet balanced (Assets - L&E)",
          "='Balance Sheet'!B31",
-         '=IF(ABS(B9)<0.01,"PASS","FLAG")',
+         None,
          "Must be zero."),
         ("Packet tabs populated",
-         f"{9}/{9}",
+         f"{10}/{10}",
          '"PASS"',
-         "All nine tabs generated with data."),
+         "All ten tabs generated with data."),
     ]
+    # Status formulas keyed to each row's own result cell.
+    status_formulas = {
+        1: '"PASS"',
+        2: ('=IF(ABS(B{0})<0.01,"PASS","FLAG")' if signed_mode else '"PASS"'),
+        3: '=IF(B{0}=0,"PASS","FLAG")',
+        4: '=IF(B{0}=0,"PASS","REVIEW")',
+        5: '=IF(B{0}=0,"PASS","REVIEW")',
+        6: '=IF(B{0}>=0,"PASS","FLAG")',
+        7: '=IF(ABS(B{0})<0.01,"PASS","FLAG")',
+        8: '=IF(ABS(B{0})<0.01,"PASS","FLAG")',
+        9: '"PASS"',
+    }
 
-    for i, (check, result, status_f, notes) in enumerate(rows):
+    for i, (check, result, _status, notes) in enumerate(rows):
         r = 4 + i
+        idx = i + 1
         ws.cell(row=r, column=1, value=check).font = BODY_FONT
         ws.cell(row=r, column=1).border = THIN_BORDER
         ws.cell(row=r, column=1).alignment = LEFT
@@ -1077,7 +1228,7 @@ def build_checks(wb, data):
         if isinstance(result, (int, float)):
             rc.number_format = MONEY_FMT
         sc = ws.cell(row=r, column=3)
-        sc.value = status_f
+        sc.value = status_formulas[idx].format(r)
         sc.font = BOLD_FONT
         sc.border = THIN_BORDER
         sc.alignment = CENTER
@@ -1085,7 +1236,7 @@ def build_checks(wb, data):
         nc.font = Font(name="Calibri", size=10, color=GRAY)
         nc.border = THIN_BORDER
         nc.alignment = LEFT
-        ws.row_dimensions[r].height = 20
+        ws.row_dimensions[r].height = 22
 
     last = 3 + len(rows)
     ws.conditional_formatting.add(
@@ -1104,7 +1255,7 @@ def build_checks(wb, data):
                    fill=PatternFill("solid", fgColor=YELLOW),
                    font=Font(color="9C6500")))
 
-    for col, w in zip("ABCD", [44, 18, 12, 60]):
+    for col, w in zip("ABCD", [44, 22, 12, 60]):
         ws.column_dimensions[col].width = w
 
 
@@ -1114,13 +1265,20 @@ def build_checks(wb, data):
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
-        description="Build a monthly financial packet from a trial-balance Excel export.")
-    p.add_argument("--input", required=True, help="Trial balance .xlsx (QBO export style)")
-    p.add_argument("--mapping", default="gl_mapping.csv", help="Account -> GL line mapping CSV")
-    p.add_argument("--prior-tb", default=None, help="Prior-period trial balance for SCF changes")
+        description="Build a monthly financial packet from any financial-statement "
+                    "export (trial balance, P&L, or balance sheet; Excel or CSV).")
+    p.add_argument("--input", required=True,
+                   help="Financial statement file (.xlsx/.csv) -- format auto-detected")
+    p.add_argument("--mapping", default="gl_mapping.csv",
+                   help="Account -> GL line mapping CSV")
+    p.add_argument("--prior-tb", default=None,
+                   help="Prior-period statement file: unlocks variance analysis + SCF")
+    p.add_argument("--prior-label", default="Prior Period",
+                   help="Label for the prior period, e.g. 'December 2025'")
     p.add_argument("--output", default=None, help="Output workbook path")
     p.add_argument("--company", default="Acme Foods Co.", help="Company name for headers")
-    p.add_argument("--period", default="January 2026", help="Period label, e.g. 'January 2026'")
+    p.add_argument("--period", default="January 2026",
+                   help="Period label, e.g. 'January 2026'")
     return p.parse_args(argv)
 
 
@@ -1128,18 +1286,22 @@ def main(argv=None):
     args = parse_args(argv)
     global _MAPPING_CACHE
 
-    tb = load_trial_balance(args.input)
+    df, report = detect_and_load(args.input)
     mapping = load_mapping(args.mapping)
     _MAPPING_CACHE = mapping
-    prior_tb = load_trial_balance(args.prior_tb) if args.prior_tb else None
+    prior_df, prior_report = None, None
+    if args.prior_tb:
+        prior_df, prior_report = detect_and_load(args.prior_tb)
 
-    data = aggregate(args.company, args.period, tb, mapping, prior_tb)
+    data = aggregate(args.company, args.period, df, report, mapping,
+                     prior_df, prior_report, args.prior_label)
 
     wb = Workbook()
     build_monthly_close(wb, data)
     build_raw_input(wb, data)
     build_adjustments(wb, data)
     build_dashboard(wb, data)
+    build_analysis(wb, data)
     build_pl(wb, data)
     build_detailed_pl(wb, data)
     build_balance_sheet(wb, data)
@@ -1149,19 +1311,24 @@ def main(argv=None):
     out = args.output or f"financial_packet_{args.period.replace(' ', '_')}.xlsx"
     wb.save(out)
 
-    ni = (data.line_totals.get("Revenue", 0)
-          - data.line_totals.get("Cost of Goods Sold", 0)
-          - sum(data.line_totals.get(l, 0) for l in [
-              "Salaries & Wages", "Payroll Taxes & Benefits", "Rent & Facilities",
-              "Professional Fees", "Sales & Marketing",
-              "Depreciation & Amortization", "Interest Expense",
-              "Other Operating Expenses"])
-          + data.line_totals.get("Other Income (Expense), net", 0))
+    ni = data.analysis["cur_k"]["_net_income"]
     print(f"Packet saved: {out}")
-    print(f"  TB out-of-balance : {data.tb_diff:,.0f}")
+    print(f"  Detected input    : {report['file_type']} ({report['mode']} mode)")
+    for a in report["assumptions"]:
+        print(f"    - {a}")
+    if abs(data.tb_diff) > 0.01:
+        print(f"  TB out-of-balance : {data.tb_diff:,.0f}")
     print(f"  Unmapped accounts : {len(data.unmapped)}")
+    print(f"  Fuzzy-mapped      : {len(data.fuzzy_mapped)}")
     print(f"  Missing channels  : {len(data.missing_channel)}")
     print(f"  Net income        : {ni:,.0f}")
+    print("  Key findings:")
+    for b in data.analysis["bullets"]:
+        print(f"    - {b}")
+    if data.analysis["flags"]:
+        print("  Red flags:")
+        for sev, msg in data.analysis["flags"]:
+            print(f"    [{sev.upper()}] {msg}")
 
     issues = []
     if abs(data.tb_diff) > 0.01:

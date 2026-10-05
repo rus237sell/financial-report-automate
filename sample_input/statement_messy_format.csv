@@ -1,0 +1,21 @@
+Acct #,Account Title,Amount,Class
+,Sales Revenue,520000,Wholesale
+,Online Sales,210000,DTC
+,Foodservice Sales,95000,Foodservice
+,Raw material purchases,310000,Wholesale
+,Freight charges,24500,Foodservice
+,Wages & salaries,145000,Overhead
+,Payroll taxes,15950,Overhead
+,Rent expense,18000,Overhead
+,Legal fees,9500,Overhead
+,Marketing & ads,22000,DTC
+,Depreciation,7800,Overhead
+,Loan interest,11250,Overhead
+,Office expenses,2800,Overhead
+,Accounts receivable,186400,
+,Inventory,132500,
+,Cash in bank,167300,
+,Equipment net of depreciation,210000,
+,Accounts payable,98700,
+,Bank loan,221000,
+,Owner equity,118300,
