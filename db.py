@@ -105,6 +105,8 @@ SELECT
         'Other Operating Expenses') THEN total ELSE 0 END) AS opex,
   SUM(CASE WHEN line = 'Other Income (Expense), net' THEN total ELSE 0 END)
       AS other_net,
+  SUM(CASE WHEN line = 'Interest Expense' THEN total ELSE 0 END)
+      AS interest_expense,
   SUM(CASE WHEN line IN ('Cash & Cash Equivalents','Accounts Receivable',
         'Inventory','Prepaid Expenses','Other Current Assets')
         THEN total ELSE 0 END) AS current_assets,

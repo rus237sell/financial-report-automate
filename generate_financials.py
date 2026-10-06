@@ -170,10 +170,11 @@ KPI_DEFS = [
     ("Operating Expense Ratio", 0.30, 0.02, 0.05, 0.08, "lower"),
     ("Current Ratio", 2.00, 0.25, 0.50, 0.75, "higher"),
     ("Debt to Equity", 1.00, 0.25, 0.50, 0.75, "lower"),
+    ("Interest Coverage", 5.00, 1.00, 2.00, 3.00, "higher"),
 ]
-ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:9
+ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:10
 
-# Dashboard rows (5..10) map to the KPI_DEFS order above.
+# Dashboard rows (5..11) map to the KPI_DEFS order above.
 DASH_FIRST_ROW = 5
 
 
@@ -562,6 +563,7 @@ def build_dashboard(wb, data):
         "='P&L'!B18/'P&L'!B6",                          # Opex Ratio
         "='Balance Sheet'!B11/'Balance Sheet'!B21",     # Current Ratio
         "='Balance Sheet'!B24/'Balance Sheet'!B29",     # Debt to Equity
+        "=IF('P&L'!B16=0,\"N/A\",('P&L'!B19+'P&L'!B16)/'P&L'!B16)",  # Interest Coverage
     ]
     notes = [
         "Board target -- the headline number",
@@ -570,6 +572,7 @@ def build_dashboard(wb, data):
         "Overhead discipline (lower is better)",
         "Short-term liquidity cushion",
         "Leverage (lower is better)",
+        "Debt-service cushion (higher is better)",
     ]
     pct_rows = {0, 1, 2, 3}
 

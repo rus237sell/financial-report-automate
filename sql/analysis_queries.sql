@@ -34,6 +34,8 @@ WITH t AS (
           'Other Operating Expenses') THEN total ELSE 0 END) AS opex,
     SUM(CASE WHEN line = 'Other Income (Expense), net'
           THEN total ELSE 0 END) AS other_net,
+    SUM(CASE WHEN line = 'Interest Expense'
+          THEN total ELSE 0 END) AS interest_expense,
     SUM(CASE WHEN line IN ('Cash & Cash Equivalents','Accounts Receivable',
           'Inventory','Prepaid Expenses','Other Current Assets')
           THEN total ELSE 0 END) AS current_assets,
@@ -57,7 +59,11 @@ SELECT
   opex / revenue                                      AS opex_ratio,
   current_assets / current_liab                       AS current_ratio,
   total_liab / (common_stock + retained_begin
-                + (revenue - cogs - opex + other_net)) AS debt_to_equity
+                + (revenue - cogs - opex + other_net)) AS debt_to_equity,
+  -- EBIT = operating margin line + interest (interest sits inside opex)
+  CASE WHEN COALESCE(interest_expense, 0) = 0 THEN NULL
+       ELSE ((revenue - cogs - opex) + interest_expense) / interest_expense
+  END AS interest_coverage
 FROM t;
 
 -- 4. Top movers vs prior (the story behind the variance) -----------------

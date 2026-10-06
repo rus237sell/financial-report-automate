@@ -48,7 +48,7 @@ def variance_rows(cur: dict, prior: dict | None,
 
 
 def kpis(totals: dict) -> dict[str, float | None]:
-    """The six dashboard KPIs from statement-line totals."""
+    """The seven dashboard KPIs from statement-line totals."""
     rev = totals.get("Revenue", 0) or 0
     gp = totals.get("Revenue", 0) - totals.get("Cost of Goods Sold", 0)
     opex = sum(totals.get(l, 0) for l in [
@@ -58,6 +58,10 @@ def kpis(totals: dict) -> dict[str, float | None]:
         "Other Operating Expenses"])
     oi = gp - opex
     ni = oi + totals.get("Other Income (Expense), net", 0)
+    ie = totals.get("Interest Expense", 0) or 0
+    # This engine's operating income sits below interest (interest is in the
+    # opex sum above), so EBIT = operating income + interest expense.
+    ebit = oi + ie
     ca = sum(totals.get(l, 0) for l in [
         "Cash & Cash Equivalents", "Accounts Receivable", "Inventory",
         "Prepaid Expenses", "Other Current Assets"])
@@ -75,6 +79,7 @@ def kpis(totals: dict) -> dict[str, float | None]:
         "Operating Expense Ratio": (opex / rev) if rev else None,
         "Current Ratio": (ca / cl) if cl else None,
         "Debt to Equity": (tl / eq) if eq else None,
+        "Interest Coverage": (ebit / ie) if ie else None,
         "_revenue": rev, "_net_income": ni, "_opex": opex, "_cash":
             totals.get("Cash & Cash Equivalents", 0),
     }
@@ -125,6 +130,10 @@ def red_flags(cur: dict, prior: dict | None,
         flags.append(("medium", f"Current ratio {cr:.2f} -- liquidity is thin."))
     if dte is not None and dte > 1.5:
         flags.append(("medium", f"Debt-to-equity {dte:.2f} -- leverage is elevated."))
+    ic = cur_k.get("Interest Coverage")
+    if ic is not None and ic < 2.0:
+        flags.append(("high" if ic < 1.5 else "medium",
+                      f"Interest coverage {ic:.2f}x -- debt-service cushion is thin."))
 
     order = {"high": 0, "medium": 1, "low": 2}
     flags.sort(key=lambda f: order[f[0]])

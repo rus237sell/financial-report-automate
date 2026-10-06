@@ -29,7 +29,8 @@ analysis.
 
 **Short results** (fictional "Acme Foods Co." sample data): net income
 $123,800 on $849,500 revenue (14.6% margin); beat budget by 9.6%; dashboard
-grades A/B/B/C/A/C on default bands; SCF reconciles to the penny.
+grades B/A/B/C/A/C/A on default bands; interest coverage 12.1x; SCF
+reconciles to the penny.
 
 ## Quick start
 
