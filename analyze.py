@@ -59,6 +59,7 @@ def kpis(totals: dict) -> dict[str, float | None]:
     oi = gp - opex
     ni = oi + totals.get("Other Income (Expense), net", 0)
     ie = totals.get("Interest Expense", 0) or 0
+    cash = totals.get("Cash & Cash Equivalents", 0) or 0
     # This engine's operating income sits below interest (interest is in the
     # opex sum above), so EBIT = operating income + interest expense.
     ebit = oi + ie
@@ -80,8 +81,8 @@ def kpis(totals: dict) -> dict[str, float | None]:
         "Current Ratio": (ca / cl) if cl else None,
         "Debt to Equity": (tl / eq) if eq else None,
         "Interest Coverage": (ebit / ie) if ie else None,
-        "_revenue": rev, "_net_income": ni, "_opex": opex, "_cash":
-            totals.get("Cash & Cash Equivalents", 0),
+        "Cash Runway": (cash / (opex / 12)) if opex else None,
+        "_revenue": rev, "_net_income": ni, "_opex": opex, "_cash": cash,
     }
 
 
@@ -120,10 +121,14 @@ def red_flags(cur: dict, prior: dict | None,
                           f"Gross margin compressed {abs(gm):.1f}pp -- check pricing/COGS."))
 
     cash = cur_k["_cash"]
+    rw = cur_k.get("Cash Runway")
     if cash < 0:
         flags.append(("high", "Cash balance is negative -- immediate attention."))
-    elif cur_k["_opex"] and cash < cur_k["_opex"] / 12:
-        flags.append(("medium", "Cash covers less than one month of operating expenses."))
+    elif rw is not None and rw < 3:
+        sev = "high" if rw < 1 else "medium"
+        flags.append((sev,
+                      f"Cash runway {rw:.1f} months -- less than 3 months "
+                      "of operating expenses covered."))
 
     cr, dte = cur_k.get("Current Ratio"), cur_k.get("Debt to Equity")
     if cr is not None and cr < 1.5:

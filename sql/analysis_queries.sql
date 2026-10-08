@@ -34,6 +34,8 @@ WITH t AS (
           'Other Operating Expenses') THEN total ELSE 0 END) AS opex,
     SUM(CASE WHEN line = 'Other Income (Expense), net'
           THEN total ELSE 0 END) AS other_net,
+    SUM(CASE WHEN line = 'Cash & Cash Equivalents'
+          THEN total ELSE 0 END) AS cash,
     SUM(CASE WHEN line = 'Interest Expense'
           THEN total ELSE 0 END) AS interest_expense,
     SUM(CASE WHEN line IN ('Cash & Cash Equivalents','Accounts Receivable',
@@ -63,7 +65,10 @@ SELECT
   -- EBIT = operating margin line + interest (interest sits inside opex)
   CASE WHEN COALESCE(interest_expense, 0) = 0 THEN NULL
        ELSE ((revenue - cogs - opex) + interest_expense) / interest_expense
-  END AS interest_coverage
+  END AS interest_coverage,
+  CASE WHEN COALESCE(opex, 0) = 0 THEN NULL
+       ELSE cash / (opex / 12)
+  END AS cash_runway
 FROM t;
 
 -- 4. Top movers vs prior (the story behind the variance) -----------------

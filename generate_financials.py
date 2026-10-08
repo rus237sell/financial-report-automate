@@ -171,10 +171,11 @@ KPI_DEFS = [
     ("Current Ratio", 2.00, 0.25, 0.50, 0.75, "higher"),
     ("Debt to Equity", 1.00, 0.25, 0.50, 0.75, "lower"),
     ("Interest Coverage", 5.00, 1.00, 2.00, 3.00, "higher"),
+    ("Cash Runway", 6.00, 1.00, 2.00, 3.00, "higher"),  # months of opex covered
 ]
-ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:10
+ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:11
 
-# Dashboard rows (5..11) map to the KPI_DEFS order above.
+# Dashboard rows (5..12) map to the KPI_DEFS order above.
 DASH_FIRST_ROW = 5
 
 
@@ -520,7 +521,8 @@ def build_adjustments(wb, data):
         "still earns that grade. Anything worse than the D band is an F.\n"
         "- Direction \"higher\" means bigger is better (margins, current ratio); "
         "\"lower\" means smaller is better (expense ratio, leverage).\n"
-        "- Bands are in percentage points for margins and ratio points for ratios."
+        "- Bands are in percentage points for margins, ratio points for ratios, "
+        "and months for cash runway."
     ))
     box.alignment = Alignment(wrap_text=True, vertical="top")
     box.font = Font(name="Calibri", size=10, color=GRAY)
@@ -564,6 +566,7 @@ def build_dashboard(wb, data):
         "='Balance Sheet'!B11/'Balance Sheet'!B21",     # Current Ratio
         "='Balance Sheet'!B24/'Balance Sheet'!B29",     # Debt to Equity
         "=IF('P&L'!B16=0,\"N/A\",('P&L'!B19+'P&L'!B16)/'P&L'!B16)",  # Interest Coverage
+        "=IF('P&L'!B18=0,\"N/A\",'Balance Sheet'!B6/('P&L'!B18/12))",  # Cash Runway
     ]
     notes = [
         "Board target -- the headline number",
@@ -573,6 +576,7 @@ def build_dashboard(wb, data):
         "Short-term liquidity cushion",
         "Leverage (lower is better)",
         "Debt-service cushion (higher is better)",
+        "Months of opex covered by cash (higher is better)",
     ]
     pct_rows = {0, 1, 2, 3}
 
