@@ -36,6 +36,8 @@ WITH t AS (
           THEN total ELSE 0 END) AS other_net,
     SUM(CASE WHEN line = 'Cash & Cash Equivalents'
           THEN total ELSE 0 END) AS cash,
+    SUM(CASE WHEN line = 'Accounts Receivable'
+          THEN total ELSE 0 END) AS ar,
     SUM(CASE WHEN line = 'Interest Expense'
           THEN total ELSE 0 END) AS interest_expense,
     SUM(CASE WHEN line IN ('Cash & Cash Equivalents','Accounts Receivable',
@@ -68,7 +70,11 @@ SELECT
   END AS interest_coverage,
   CASE WHEN COALESCE(opex, 0) = 0 THEN NULL
        ELSE cash / (opex / 12)
-  END AS cash_runway
+  END AS cash_runway,
+  -- DSO: AR against annualized daily sales (monthly revenue x 12 / 365)
+  CASE WHEN COALESCE(revenue, 0) = 0 THEN NULL
+       ELSE ar / (revenue * 12 / 365)
+  END AS days_sales_outstanding
 FROM t;
 
 -- 4. Top movers vs prior (the story behind the variance) -----------------
