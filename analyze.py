@@ -48,7 +48,7 @@ def variance_rows(cur: dict, prior: dict | None,
 
 
 def kpis(totals: dict) -> dict[str, float | None]:
-    """The nine dashboard KPIs from statement-line totals."""
+    """The ten dashboard KPIs from statement-line totals."""
     rev = totals.get("Revenue", 0) or 0
     gp = totals.get("Revenue", 0) - totals.get("Cost of Goods Sold", 0)
     opex = sum(totals.get(l, 0) for l in [
@@ -61,6 +61,9 @@ def kpis(totals: dict) -> dict[str, float | None]:
     ie = totals.get("Interest Expense", 0) or 0
     cash = totals.get("Cash & Cash Equivalents", 0) or 0
     ar = totals.get("Accounts Receivable", 0) or 0
+    inv = totals.get("Inventory", 0) or 0
+    ap = totals.get("Accounts Payable", 0) or 0
+    cogs = totals.get("Cost of Goods Sold", 0) or 0
     # This engine's operating income sits below interest (interest is in the
     # opex sum above), so EBIT = operating income + interest expense.
     ebit = oi + ie
@@ -86,9 +89,25 @@ def kpis(totals: dict) -> dict[str, float | None]:
         # DSO uses annualized daily sales: monthly revenue is one-twelfth of
         # the annual run-rate, so AR / (rev * 12 / 365).
         "Days Sales Outstanding": (ar / (rev * 12 / 365)) if rev else None,
+        # Cash conversion cycle: days cash is tied up between paying
+        # suppliers and collecting from customers = DSO + DIO - DPO, where
+        # DIO/DPO run inventory and payables against annualized daily COGS
+        # the same way DSO runs receivables against daily sales.
+        "Cash Conversion Cycle": _ccc(rev, cogs, ar, inv, ap),
         "_revenue": rev, "_net_income": ni, "_opex": opex, "_cash": cash,
-        "_ar": ar,
+        "_ar": ar, "_inventory": inv, "_ap": ap, "_cogs": cogs,
+        "_dio": (inv / (cogs * 12 / 365)) if cogs else None,
+        "_dpo": (ap / (cogs * 12 / 365)) if cogs else None,
     }
+
+
+def _ccc(rev: float, cogs: float, ar: float, inv: float,
+         ap: float) -> float | None:
+    """DSO + DIO - DPO in days, or None when revenue or COGS is missing."""
+    if not rev or not cogs:
+        return None
+    return (ar / (rev * 12 / 365) + inv / (cogs * 12 / 365)
+            - ap / (cogs * 12 / 365))
 
 
 def red_flags(cur: dict, prior: dict | None,
@@ -150,6 +169,12 @@ def red_flags(cur: dict, prior: dict | None,
         flags.append((sev,
                       f"Days sales outstanding {dso:.0f} days -- collections are "
                       "slipping vs the 45-day target."))
+    ccc = cur_k.get("Cash Conversion Cycle")
+    if ccc is not None and ccc > 60:
+        sev = "medium" if ccc <= 90 else "high"
+        flags.append((sev,
+                      f"Cash conversion cycle {ccc:.0f} days -- cash is tied up "
+                      "in receivables and inventory well over two months."))
 
     order = {"high": 0, "medium": 1, "low": 2}
     flags.sort(key=lambda f: order[f[0]])
@@ -280,5 +305,13 @@ def narrative_bullets(cur: dict, prior: dict | None,
         bullets.append(
             f"Collections running at {dso:.0f} days sales outstanding "
             f"({'on target' if dso <= 45 else 'above the 45-day target'})."
+        )
+    ccc = cur_k.get("Cash Conversion Cycle")
+    dio, dpo = cur_k.get("_dio"), cur_k.get("_dpo")
+    if ccc is not None and dio is not None and dpo is not None and dso is not None:
+        bullets.append(
+            f"Cash conversion cycle is {ccc:.0f} days "
+            f"({dso:.0f} to collect + {dio:.0f} of inventory "
+            f"- {dpo:.0f} to pay suppliers)."
         )
     return bullets

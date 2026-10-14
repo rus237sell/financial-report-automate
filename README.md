@@ -29,8 +29,9 @@ analysis.
 
 **Short results** (fictional "Acme Foods Co." sample data): net income
 $123,800 on $849,500 revenue (14.6% margin); beat budget by 9.6%; dashboard
-grades B/A/B/C/A/C/A/A/A on default bands; interest coverage 12.1x; cash
-runway 7.1 months; days sales outstanding 7 days; SCF reconciles to the penny.
+grades B/A/B/C/A/C/A/A/A/A on default bands; interest coverage 12.1x; cash
+runway 7.1 months; days sales outstanding 7 days; cash conversion cycle
+9 days (7 to collect + 9 of inventory − 7 to pay suppliers); SCF reconciles to the penny.
 
 ## Quick start
 
@@ -68,6 +69,5 @@ data only — no client data in this repo).
 **Grading scale** (Adjustments tab, all editable): net margin A ≥ 10% ·
 gross margin A ≥ 45% · opex ratio A ≤ 30% · current ratio A ≥ 2.0 ·
 debt/equity A ≤ 1.0 · interest coverage A ≥ 5x · cash runway A ≥ 6 mo. ·
-days sales outstanding A ≤ 45 days. Change any band and the
-Dashboard re-scores live. Change any band and the
-Dashboard re-scores live.
+days sales outstanding A ≤ 45 days · cash conversion cycle A ≤ 30 days.
+Change any band and the Dashboard re-scores live.

@@ -38,6 +38,10 @@ WITH t AS (
           THEN total ELSE 0 END) AS cash,
     SUM(CASE WHEN line = 'Accounts Receivable'
           THEN total ELSE 0 END) AS ar,
+    SUM(CASE WHEN line = 'Inventory'
+          THEN total ELSE 0 END) AS inventory,
+    SUM(CASE WHEN line = 'Accounts Payable'
+          THEN total ELSE 0 END) AS ap,
     SUM(CASE WHEN line = 'Interest Expense'
           THEN total ELSE 0 END) AS interest_expense,
     SUM(CASE WHEN line IN ('Cash & Cash Equivalents','Accounts Receivable',
@@ -74,7 +78,19 @@ SELECT
   -- DSO: AR against annualized daily sales (monthly revenue x 12 / 365)
   CASE WHEN COALESCE(revenue, 0) = 0 THEN NULL
        ELSE ar / (revenue * 12 / 365)
-  END AS days_sales_outstanding
+  END AS days_sales_outstanding,
+  -- DIO / DPO: inventory and payables against annualized daily COGS
+  CASE WHEN COALESCE(cogs, 0) = 0 THEN NULL
+       ELSE inventory / (cogs * 12 / 365)
+  END AS days_inventory_outstanding,
+  CASE WHEN COALESCE(cogs, 0) = 0 THEN NULL
+       ELSE ap / (cogs * 12 / 365)
+  END AS days_payable_outstanding,
+  -- Cash conversion cycle: DSO + DIO - DPO
+  CASE WHEN COALESCE(revenue, 0) = 0 OR COALESCE(cogs, 0) = 0 THEN NULL
+       ELSE ar / (revenue * 12 / 365) + inventory / (cogs * 12 / 365)
+            - ap / (cogs * 12 / 365)
+  END AS cash_conversion_cycle
 FROM t;
 
 -- 4. Top movers vs prior (the story behind the variance) -----------------
