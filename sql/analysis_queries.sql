@@ -66,6 +66,10 @@ SELECT
   (revenue - cogs - opex) / revenue                   AS operating_margin,
   opex / revenue                                      AS opex_ratio,
   current_assets / current_liab                       AS current_ratio,
+  -- Quick ratio: cash + receivables only (no inventory or prepaids)
+  CASE WHEN COALESCE(current_liab, 0) = 0 THEN NULL
+       ELSE (cash + ar) / current_liab
+  END AS quick_ratio,
   total_liab / (common_stock + retained_begin
                 + (revenue - cogs - opex + other_net)) AS debt_to_equity,
   -- EBIT = operating margin line + interest (interest sits inside opex)

@@ -48,7 +48,7 @@ def variance_rows(cur: dict, prior: dict | None,
 
 
 def kpis(totals: dict) -> dict[str, float | None]:
-    """The ten dashboard KPIs from statement-line totals."""
+    """The eleven dashboard KPIs from statement-line totals."""
     rev = totals.get("Revenue", 0) or 0
     gp = totals.get("Revenue", 0) - totals.get("Cost of Goods Sold", 0)
     opex = sum(totals.get(l, 0) for l in [
@@ -94,6 +94,10 @@ def kpis(totals: dict) -> dict[str, float | None]:
         # DIO/DPO run inventory and payables against annualized daily COGS
         # the same way DSO runs receivables against daily sales.
         "Cash Conversion Cycle": _ccc(rev, cogs, ar, inv, ap),
+        # Quick ratio: only the most liquid current assets (cash +
+        # receivables) against current liabilities -- no inventory or
+        # prepaids, which cannot be sold or recovered on short notice.
+        "Quick Ratio": ((cash + ar) / cl) if cl else None,
         "_revenue": rev, "_net_income": ni, "_opex": opex, "_cash": cash,
         "_ar": ar, "_inventory": inv, "_ap": ap, "_cogs": cogs,
         "_dio": (inv / (cogs * 12 / 365)) if cogs else None,
@@ -157,6 +161,11 @@ def red_flags(cur: dict, prior: dict | None,
     cr, dte = cur_k.get("Current Ratio"), cur_k.get("Debt to Equity")
     if cr is not None and cr < 1.5:
         flags.append(("medium", f"Current ratio {cr:.2f} -- liquidity is thin."))
+    qr = cur_k.get("Quick Ratio")
+    if qr is not None and qr < 1.0:
+        flags.append(("high" if qr < 0.5 else "medium",
+                      f"Quick ratio {qr:.2f} -- cash and receivables alone "
+                      "do not cover current liabilities."))
     if dte is not None and dte > 1.5:
         flags.append(("medium", f"Debt-to-equity {dte:.2f} -- leverage is elevated."))
     ic = cur_k.get("Interest Coverage")
@@ -299,6 +308,13 @@ def narrative_bullets(cur: dict, prior: dict | None,
         bullets.append(
             f"Liquidity is {'comfortable' if cr >= 2 else 'adequate' if cr >= 1.5 else 'tight'} "
             f"(current ratio {cr:.2f}); leverage at {dte:.2f}x debt-to-equity."
+        )
+    qr = cur_k.get("Quick Ratio")
+    if qr is not None:
+        bullets.append(
+            f"Quick ratio is {qr:.2f} -- cash and receivables "
+            f"{'cover' if qr >= 1 else 'do not cover'} current liabilities "
+            "without selling inventory."
         )
     dso = cur_k.get("Days Sales Outstanding")
     if dso is not None:

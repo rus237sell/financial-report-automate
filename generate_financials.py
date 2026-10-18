@@ -174,10 +174,11 @@ KPI_DEFS = [
     ("Cash Runway", 6.00, 1.00, 2.00, 3.00, "higher"),  # months of opex covered
     ("Days Sales Outstanding", 45.00, 5.00, 10.00, 15.00, "lower"),  # days
     ("Cash Conversion Cycle", 30.00, 10.00, 20.00, 30.00, "lower"),  # days: DSO + DIO - DPO
+    ("Quick Ratio", 1.00, 0.20, 0.40, 0.60, "higher"),  # (cash + AR) / current liabilities
 ]
-ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:13
+ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:14
 
-# Dashboard rows (5..14) map to the KPI_DEFS order above.
+# Dashboard rows (5..15) map to the KPI_DEFS order above.
 DASH_FIRST_ROW = 5
 
 
@@ -574,6 +575,8 @@ def build_dashboard(wb, data):
         # Cash Conversion Cycle = DSO + DIO (Inventory vs daily COGS) - DPO (AP vs daily COGS)
         "=IF(OR('P&L'!B6=0,'P&L'!B7=0),\"N/A\",'Balance Sheet'!B7/('P&L'!B6*12/365)"
         "+'Balance Sheet'!B8/('P&L'!B7*12/365)-'Balance Sheet'!B16/('P&L'!B7*12/365))",
+        # Quick Ratio = (Cash + Accounts Receivable) / Total Current Liabilities
+        "=IF('Balance Sheet'!B21=0,\"N/A\",('Balance Sheet'!B6+'Balance Sheet'!B7)/'Balance Sheet'!B21)",
     ]
     notes = [
         "Board target -- the headline number",
@@ -586,6 +589,7 @@ def build_dashboard(wb, data):
         "Months of opex covered by cash (higher is better)",
         "Collection speed (lower is better)",
         "Days cash is tied up in working capital (lower is better)",
+        "Immediate liquidity without selling inventory (higher is better)",
     ]
     pct_rows = {0, 1, 2, 3}
 
