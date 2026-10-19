@@ -26,6 +26,10 @@ analysis.
   auto-analyzer (variance, narrative findings, red flags).
 - **v3** — budget-vs-actual; SQLite analytical store with documented SQL
   queries, verified row-for-row against the Python engine.
+- **v4** — Dashboard depth: headline results strip (revenue, net income,
+  cash, each with a prior-period or budget comparison), units inside the
+  number formats (mo / days / x), and a print-ready Dashboard that fits
+  one page with all notes visible.
 
 **Short results** (fictional "Acme Foods Co." sample data): net income
 $123,800 on $849,500 revenue (14.6% margin); beat budget by 9.6%; dashboard
@@ -34,6 +38,11 @@ runway 7.1 months; days sales outstanding 7 days; cash conversion cycle
 9 days (7 to collect + 9 of inventory − 7 to pay suppliers); quick ratio
 1.82 (cash + receivables cover current liabilities without selling
 inventory); SCF reconciles to the penny.
+
+![KPI Dashboard](docs/dashboard.png)
+
+Sample output: [docs/sample_packet.xlsx](docs/sample_packet.xlsx)
+(the full 10-tab packet built from the fictional sample data).
 
 ## Quick start
 

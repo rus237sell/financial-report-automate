@@ -178,8 +178,10 @@ KPI_DEFS = [
 ]
 ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:14
 
-# Dashboard rows (5..15) map to the KPI_DEFS order above.
-DASH_FIRST_ROW = 5
+# Dashboard KPI rows (9..19) map to the KPI_DEFS order above.
+# Rows 3-6 are the headline strip, row 8 is the KPI table header.
+DASH_FIRST_ROW = 9
+DASH_HEADER_ROW = 8
 
 
 # ---------------------------------------------------------------------------
@@ -557,10 +559,80 @@ def build_dashboard(wb, data):
     ws.sheet_properties.tabColor = "2E7D32"
     style_title_block(ws, f"{data.company} -- KPI Dashboard", data.period, 5)
 
+    # --- Headline strip (rows 3-6): the three numbers a reader wants
+    # first. Values are live formulas to the P&L / Balance Sheet; the
+    # comparison percentages are computed at build time, the same way
+    # the Analysis tab's variance figures are.
+    cur_k = kpis(data.line_totals)
+    prior_k = kpis(data.prior_totals) if data.prior_totals else None
+    bud_k = kpis(data.budget_totals) if data.budget_totals else None
+
+    def _delta(cur, base):
+        return (cur - base) / base if base else None
+
+    ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=5)
+    bar = ws.cell(row=3, column=1, value="HEADLINE RESULTS")
+    bar.font = HEADER_FONT
+    bar.fill = HEADER_FILL
+    bar.alignment = LEFT
+    ws.row_dimensions[3].height = 20
+
+    headlines = [
+        ("Revenue", "='P&L'!B6",
+         f"vs {data.prior_label}" if prior_k else "no prior period",
+         _delta(cur_k["_revenue"], prior_k["_revenue"]) if prior_k else None,
+         "Top line for the period"),
+        ("Net Income", "='P&L'!B22",
+         (f"vs {data.budget_label}" if bud_k else
+          f"vs {data.prior_label}" if prior_k else "no comparison"),
+         (_delta(cur_k["_net_income"], bud_k["_net_income"]) if bud_k else
+          _delta(cur_k["_net_income"], prior_k["_net_income"])
+          if prior_k else None),
+         (f"Budgeted ${bud_k['_net_income']:,.0f}" if bud_k else
+          "Bottom line for the period")),
+        ("Cash & Equivalents", "='Balance Sheet'!B6",
+         f"vs {data.prior_label}" if prior_k else "no prior period",
+         _delta(cur_k["_cash"], prior_k["_cash"]) if prior_k else None,
+         "Balance Sheet cash position"),
+    ]
+    for j, (label, formula, cmp_label, delta, note) in enumerate(headlines):
+        r = 4 + j
+        lc = ws.cell(row=r, column=1, value=label)
+        lc.font = BOLD_FONT
+        lc.border = THIN_BORDER
+        lc.alignment = LEFT
+        v = ws.cell(row=r, column=2)
+        v.value = formula
+        v.number_format = '"$"#,##0'
+        v.font = Font(name="Calibri", size=12, bold=True, color=NAVY)
+        v.fill = CALC_FILL
+        v.border = THIN_BORDER
+        v.alignment = CENTER
+        cc = ws.cell(row=r, column=3, value=cmp_label)
+        cc.font = Font(name="Calibri", size=10, color=GRAY)
+        cc.border = THIN_BORDER
+        cc.alignment = CENTER
+        d = ws.cell(row=r, column=4)
+        if delta is None:
+            d.value = "n/a"
+            d.font = Font(name="Calibri", size=10, italic=True, color=GRAY)
+        else:
+            d.value = delta
+            d.number_format = '+0.0%;-0.0%'
+            d.font = BOLD_FONT
+        d.border = THIN_BORDER
+        d.alignment = CENTER
+        nc = ws.cell(row=r, column=5, value=note)
+        nc.font = Font(name="Calibri", size=10, color=GRAY)
+        nc.border = THIN_BORDER
+        nc.alignment = LEFT
+        ws.row_dimensions[r].height = 20
+    ws.row_dimensions[7].height = 8
+
     headers = ["KPI", "Actual", "Target", "Grade", "Note"]
     for i, h in enumerate(headers, 1):
-        ws.cell(row=3, column=i, value=h)
-    style_header_row(ws, 3, 5)
+        ws.cell(row=DASH_HEADER_ROW, column=i, value=h)
+    style_header_row(ws, DASH_HEADER_ROW, 5)
 
     actual_formulas = [
         "='P&L'!C23",                                   # Net Profit Margin
@@ -591,7 +663,11 @@ def build_dashboard(wb, data):
         "Days cash is tied up in working capital (lower is better)",
         "Immediate liquidity without selling inventory (higher is better)",
     ]
-    pct_rows = {0, 1, 2, 3}
+    # Actual/Target number formats: units ride inside the format so a
+    # value cannot be misread (7.09 mo, 6.7 days, 12.11x).
+    value_fmts = [PCT_FMT, PCT_FMT, PCT_FMT, PCT_FMT,
+                  RATIO_FMT, '0.00"x"', '0.00"x"', '0.00" mo"',
+                  '0.0" days"', '0.0" days"', RATIO_FMT]
 
     for i, (metric, _t, _tb, _tc, _td, direction) in enumerate(KPI_DEFS):
         r = DASH_FIRST_ROW + i
@@ -602,7 +678,7 @@ def build_dashboard(wb, data):
 
         a = ws.cell(row=r, column=2)
         a.value = actual_formulas[i]
-        a.number_format = PCT_FMT if i in pct_rows else RATIO_FMT
+        a.number_format = value_fmts[i]
         a.font = BOLD_FONT
         a.border = THIN_BORDER
         a.alignment = CENTER
@@ -610,7 +686,7 @@ def build_dashboard(wb, data):
 
         t = ws.cell(row=r, column=3)
         t.value = f"=Adjustments!B{adj_row}"
-        t.number_format = PCT_FMT if i in pct_rows else RATIO_FMT
+        t.number_format = value_fmts[i]
         t.border = THIN_BORDER
         t.alignment = CENTER
 
@@ -624,7 +700,7 @@ def build_dashboard(wb, data):
         n.font = Font(name="Calibri", size=10, color=GRAY)
         n.border = THIN_BORDER
         n.alignment = LEFT
-        ws.row_dimensions[r].height = 22
+        ws.row_dimensions[r].height = 26
 
     grade_range = f"D{DASH_FIRST_ROW}:D{DASH_FIRST_ROW + len(KPI_DEFS) - 1}"
     ws.conditional_formatting.add(
@@ -655,6 +731,18 @@ def build_dashboard(wb, data):
 
     for col, w in zip("ABCDE", [28, 14, 14, 10, 42]):
         ws.column_dimensions[col].width = w
+
+    # Print-ready: the whole dashboard, notes included, fits one page.
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
+    ws.page_setup.fitToPage = True
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+    ws.page_margins.left = ws.page_margins.right = 0.4
+    ws.page_margins.top = ws.page_margins.bottom = 0.5
+    ws.print_area = f"A1:E{DASH_FIRST_ROW + len(KPI_DEFS) - 1}"
+    ws.print_title_rows = "1:2"
 
 
 def build_analysis(wb, data):
