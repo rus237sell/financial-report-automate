@@ -48,7 +48,7 @@ def variance_rows(cur: dict, prior: dict | None,
 
 
 def kpis(totals: dict) -> dict[str, float | None]:
-    """The eleven dashboard KPIs from statement-line totals."""
+    """The twelve dashboard KPIs from statement-line totals."""
     rev = totals.get("Revenue", 0) or 0
     gp = totals.get("Revenue", 0) - totals.get("Cost of Goods Sold", 0)
     opex = sum(totals.get(l, 0) for l in [
@@ -63,6 +63,7 @@ def kpis(totals: dict) -> dict[str, float | None]:
     ar = totals.get("Accounts Receivable", 0) or 0
     inv = totals.get("Inventory", 0) or 0
     ap = totals.get("Accounts Payable", 0) or 0
+    cpltd = totals.get("Current Portion of Long-Term Debt", 0) or 0
     cogs = totals.get("Cost of Goods Sold", 0) or 0
     # This engine's operating income sits below interest (interest is in the
     # opex sum above), so EBIT = operating income + interest expense.
@@ -98,11 +99,24 @@ def kpis(totals: dict) -> dict[str, float | None]:
         # receivables) against current liabilities -- no inventory or
         # prepaids, which cannot be sold or recovered on short notice.
         "Quick Ratio": ((cash + ar) / cl) if cl else None,
+        # Debt service coverage: EBIT against the period's debt service --
+        # interest plus scheduled principal. The current portion of LTD is
+        # the principal due over the next 12 months, so one month of it is
+        # CPLTD / 12, matching the monthly interest expense.
+        "Debt Service Coverage": _dscr(ebit, ie, cpltd),
         "_revenue": rev, "_net_income": ni, "_opex": opex, "_cash": cash,
         "_ar": ar, "_inventory": inv, "_ap": ap, "_cogs": cogs,
         "_dio": (inv / (cogs * 12 / 365)) if cogs else None,
         "_dpo": (ap / (cogs * 12 / 365)) if cogs else None,
     }
+
+
+def _dscr(ebit: float, interest: float, cpltd: float) -> float | None:
+    """EBIT / (interest + CPLTD/12), or None when there is no debt service."""
+    service = interest + cpltd / 12
+    if not service:
+        return None
+    return ebit / service
 
 
 def _ccc(rev: float, cogs: float, ar: float, inv: float,
@@ -172,6 +186,11 @@ def red_flags(cur: dict, prior: dict | None,
     if ic is not None and ic < 2.0:
         flags.append(("high" if ic < 1.5 else "medium",
                       f"Interest coverage {ic:.2f}x -- debt-service cushion is thin."))
+    dscr = cur_k.get("Debt Service Coverage")
+    if dscr is not None and dscr < 1.25:
+        flags.append(("high" if dscr < 1.0 else "medium",
+                      f"Debt service coverage {dscr:.2f}x -- earnings "
+                      "barely cover interest plus scheduled principal."))
     dso = cur_k.get("Days Sales Outstanding")
     if dso is not None and dso > 45:
         sev = "medium" if dso <= 60 else "high"
@@ -315,6 +334,12 @@ def narrative_bullets(cur: dict, prior: dict | None,
             f"Quick ratio is {qr:.2f} -- cash and receivables "
             f"{'cover' if qr >= 1 else 'do not cover'} current liabilities "
             "without selling inventory."
+        )
+    dscr = cur_k.get("Debt Service Coverage")
+    if dscr is not None:
+        bullets.append(
+            f"Debt service coverage is {dscr:.2f}x -- earnings cover "
+            f"interest plus scheduled principal {dscr:.1f} times over."
         )
     dso = cur_k.get("Days Sales Outstanding")
     if dso is not None:

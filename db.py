@@ -107,6 +107,8 @@ SELECT
       AS other_net,
   SUM(CASE WHEN line = 'Interest Expense' THEN total ELSE 0 END)
       AS interest_expense,
+  SUM(CASE WHEN line = 'Current Portion of Long-Term Debt'
+        THEN total ELSE 0 END) AS current_portion_ltd,
   SUM(CASE WHEN line = 'Cash & Cash Equivalents' THEN total ELSE 0 END)
       AS cash,
   SUM(CASE WHEN line = 'Accounts Receivable' THEN total ELSE 0 END)

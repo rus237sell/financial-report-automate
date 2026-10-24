@@ -30,14 +30,20 @@ analysis.
   cash, each with a prior-period or budget comparison), units inside the
   number formats (mo / days / x), and a print-ready Dashboard that fits
   one page with all notes visible.
+- **v5** — Debt Service Coverage as 12th dashboard KPI (EBIT / interest +
+  scheduled principal, where scheduled principal is the current portion
+  of long-term debt spread monthly), with red-flag rules, a narrative
+  bullet, SQL parity, and the repo's first unit tests (`test_analyze.py`,
+  9 tests).
 
 **Short results** (fictional "Acme Foods Co." sample data): net income
 $123,800 on $849,500 revenue (14.6% margin); beat budget by 9.6%; dashboard
-grades B/A/B/C/A/C/A/A/A/A/A on default bands; interest coverage 12.1x; cash
+grades B/A/B/C/A/C/A/A/A/A/A/A on default bands; interest coverage 12.1x; cash
 runway 7.1 months; days sales outstanding 7 days; cash conversion cycle
 9 days (7 to collect + 9 of inventory − 7 to pay suppliers); quick ratio
 1.82 (cash + receivables cover current liabilities without selling
-inventory); SCF reconciles to the penny.
+inventory); debt service coverage 9.56x (earnings cover interest plus
+scheduled principal 9.6 times over); SCF reconciles to the penny.
 
 ![KPI Dashboard](docs/dashboard.png)
 
@@ -81,5 +87,5 @@ data only — no client data in this repo).
 gross margin A ≥ 45% · opex ratio A ≤ 30% · current ratio A ≥ 2.0 ·
 debt/equity A ≤ 1.0 · interest coverage A ≥ 5x · cash runway A ≥ 6 mo. ·
 days sales outstanding A ≤ 45 days · cash conversion cycle A ≤ 30 days ·
-quick ratio A ≥ 1.0.
+quick ratio A ≥ 1.0 · debt service coverage A ≥ 1.50x.
 Change any band and the Dashboard re-scores live.
