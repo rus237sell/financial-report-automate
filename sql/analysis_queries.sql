@@ -58,7 +58,11 @@ WITH t AS (
           'Other Noncurrent Liabilities') THEN total ELSE 0 END) AS total_liab,
     SUM(CASE WHEN line = 'Common Stock' THEN total ELSE 0 END) AS common_stock,
     SUM(CASE WHEN line = 'Retained Earnings, Beginning'
-          THEN total ELSE 0 END) AS retained_begin
+          THEN total ELSE 0 END) AS retained_begin,
+    SUM(CASE WHEN line = 'Property & Equipment, net'
+          THEN total ELSE 0 END) AS ppe_net,
+    SUM(CASE WHEN line = 'Other Noncurrent Assets'
+          THEN total ELSE 0 END) AS other_noncurrent_assets
   FROM v_line_totals
   WHERE period = 'January 2026' AND kind = 'actual'
 )
@@ -104,7 +108,16 @@ SELECT
   CASE WHEN COALESCE(revenue, 0) = 0 OR COALESCE(cogs, 0) = 0 THEN NULL
        ELSE ar / (revenue * 12 / 365) + inventory / (cogs * 12 / 365)
             - ap / (cogs * 12 / 365)
-  END AS cash_conversion_cycle
+  END AS cash_conversion_cycle,
+  -- Equity ratio: total equity / total assets, where total assets is
+  -- current assets + net PP&E + other noncurrent assets. Equity here is
+  -- the same denominator debt_to_equity uses above.
+  CASE WHEN COALESCE(current_assets, 0) + COALESCE(ppe_net, 0)
+            + COALESCE(other_noncurrent_assets, 0) = 0 THEN NULL
+       ELSE (common_stock + retained_begin
+             + (revenue - cogs - opex + other_net))
+            / (current_assets + ppe_net + other_noncurrent_assets)
+  END AS equity_ratio
 FROM t;
 
 -- 4. Top movers vs prior (the story behind the variance) -----------------

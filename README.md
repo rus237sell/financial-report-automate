@@ -35,15 +35,27 @@ analysis.
   of long-term debt spread monthly), with red-flag rules, a narrative
   bullet, SQL parity, and the repo's first unit tests (`test_analyze.py`,
   9 tests).
+- **v6** — Equity Ratio as 13th dashboard KPI (total equity / total
+  assets — the first KPI to divide by total assets, built from current
+  assets + net PP&E + other noncurrent assets), with red-flag rules
+  below 30%, a narrative bullet, and SQL parity in both
+  `analysis_queries.sql` and `db.py` (`kpi_inputs` now also returns
+  total assets, equity, and the ratio). On a balanced sheet it must
+  satisfy equity ratio = 1 / (1 + debt-to-equity); a test checks that
+  identity, so the two solvency KPIs cross-validate each other
+  (`test_analyze.py`, 16 tests).
 
 **Short results** (fictional "Acme Foods Co." sample data): net income
 $123,800 on $849,500 revenue (14.6% margin); beat budget by 9.6%; dashboard
-grades B/A/B/C/A/C/A/A/A/A/A/A on default bands; interest coverage 12.1x; cash
+grades B/A/B/C/A/C/A/A/A/A/A/A/B on default bands; interest coverage 12.1x; cash
 runway 7.1 months; days sales outstanding 7 days; cash conversion cycle
 9 days (7 to collect + 9 of inventory − 7 to pay suppliers); quick ratio
 1.82 (cash + receivables cover current liabilities without selling
 inventory); debt service coverage 9.56x (earnings cover interest plus
-scheduled principal 9.6 times over); SCF reconciles to the penny.
+scheduled principal 9.6 times over); equity ratio 43.3% ($297,500 of
+equity on $686,500 of assets — creditors fund the other 56.7%, and it
+checks against debt-to-equity: 1 / (1 + 1.31) = 43.3%); SCF reconciles
+to the penny.
 
 ![KPI Dashboard](docs/dashboard.png)
 
@@ -87,5 +99,6 @@ data only — no client data in this repo).
 gross margin A ≥ 45% · opex ratio A ≤ 30% · current ratio A ≥ 2.0 ·
 debt/equity A ≤ 1.0 · interest coverage A ≥ 5x · cash runway A ≥ 6 mo. ·
 days sales outstanding A ≤ 45 days · cash conversion cycle A ≤ 30 days ·
-quick ratio A ≥ 1.0 · debt service coverage A ≥ 1.50x.
+quick ratio A ≥ 1.0 · debt service coverage A ≥ 1.50x ·
+equity ratio A ≥ 50%.
 Change any band and the Dashboard re-scores live.

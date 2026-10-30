@@ -113,6 +113,12 @@ SELECT
       AS cash,
   SUM(CASE WHEN line = 'Accounts Receivable' THEN total ELSE 0 END)
       AS ar,
+  SUM(CASE WHEN line = 'Inventory' THEN total ELSE 0 END)
+      AS inventory,
+  SUM(CASE WHEN line = 'Property & Equipment, net' THEN total ELSE 0 END)
+      AS ppe_net,
+  SUM(CASE WHEN line = 'Other Noncurrent Assets' THEN total ELSE 0 END)
+      AS other_noncurrent_assets,
   SUM(CASE WHEN line IN ('Cash & Cash Equivalents','Accounts Receivable',
         'Inventory','Prepaid Expenses','Other Current Assets')
         THEN total ELSE 0 END) AS current_assets,
@@ -217,6 +223,25 @@ def budget_variance_rows(conn: sqlite3.Connection,
 
 
 def kpi_inputs(conn: sqlite3.Connection, period_label: str) -> dict:
-    """Raw aggregates for KPI ratios, computed in SQL."""
+    """Raw aggregates for KPI ratios, computed in SQL.
+
+    Also derives total_assets (current assets + net PP&E + other
+    noncurrent assets) and equity (common stock + beginning retained
+    earnings + net income, where net income is revenue - COGS - opex
+    + other net) so the Equity Ratio can be formed from this one row:
+    equity / total_assets, or None when total_assets is 0.
+    """
     row = conn.execute(KPI_SQL, {"period": period_label}).fetchone()
-    return dict(row) if row else {}
+    if not row:
+        return {}
+    out = dict(row)
+    net_income = ((out.get("revenue") or 0) - (out.get("cogs") or 0)
+                  - (out.get("opex") or 0) + (out.get("other_net") or 0))
+    out["total_assets"] = ((out.get("current_assets") or 0)
+                           + (out.get("ppe_net") or 0)
+                           + (out.get("other_noncurrent_assets") or 0))
+    out["equity"] = ((out.get("common_stock") or 0)
+                     + (out.get("retained_begin") or 0) + net_income)
+    out["equity_ratio"] = (out["equity"] / out["total_assets"]
+                           if out["total_assets"] else None)
+    return out

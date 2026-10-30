@@ -176,10 +176,11 @@ KPI_DEFS = [
     ("Cash Conversion Cycle", 30.00, 10.00, 20.00, 30.00, "lower"),  # days: DSO + DIO - DPO
     ("Quick Ratio", 1.00, 0.20, 0.40, 0.60, "higher"),  # (cash + AR) / current liabilities
     ("Debt Service Coverage", 1.50, 0.25, 0.50, 0.75, "higher"),  # EBIT / (interest + CPLTD/12)
+    ("Equity Ratio", 0.50, 0.10, 0.20, 0.30, "higher"),  # total equity / total assets
 ]
-ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:15
+ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:16
 
-# Dashboard KPI rows (9..20) map to the KPI_DEFS order above.
+# Dashboard KPI rows (9..21) map to the KPI_DEFS order above.
 # Rows 3-6 are the headline strip, row 8 is the KPI table header.
 DASH_FIRST_ROW = 9
 DASH_HEADER_ROW = 8
@@ -653,6 +654,8 @@ def build_dashboard(wb, data):
         # Debt Service Coverage = EBIT / (Interest + CPLTD/12); CPLTD is a
         # year of scheduled principal, so /12 matches the monthly interest
         "=IF(('P&L'!B16+'Balance Sheet'!B19/12)=0,\"N/A\",('P&L'!B19+'P&L'!B16)/('P&L'!B16+'Balance Sheet'!B19/12))",
+        # Equity Ratio = Total Equity / Total Assets
+        "=IF('Balance Sheet'!B14=0,\"N/A\",'Balance Sheet'!B29/'Balance Sheet'!B14)",
     ]
     notes = [
         "Board target -- the headline number",
@@ -667,12 +670,14 @@ def build_dashboard(wb, data):
         "Days cash is tied up in working capital (lower is better)",
         "Immediate liquidity without selling inventory (higher is better)",
         "Earnings cover interest + scheduled principal (higher is better)",
+        "Share of assets funded by equity, not creditors (higher is better)",
     ]
     # Actual/Target number formats: units ride inside the format so a
     # value cannot be misread (7.09 mo, 6.7 days, 12.11x).
     value_fmts = [PCT_FMT, PCT_FMT, PCT_FMT, PCT_FMT,
                   RATIO_FMT, '0.00"x"', '0.00"x"', '0.00" mo"',
-                  '0.0" days"', '0.0" days"', RATIO_FMT, '0.00"x"']
+                  '0.0" days"', '0.0" days"', RATIO_FMT, '0.00"x"',
+                  PCT_FMT]
 
     for i, (metric, _t, _tb, _tc, _td, direction) in enumerate(KPI_DEFS):
         r = DASH_FIRST_ROW + i

@@ -48,7 +48,7 @@ def variance_rows(cur: dict, prior: dict | None,
 
 
 def kpis(totals: dict) -> dict[str, float | None]:
-    """The twelve dashboard KPIs from statement-line totals."""
+    """The thirteen dashboard KPIs from statement-line totals."""
     rev = totals.get("Revenue", 0) or 0
     gp = totals.get("Revenue", 0) - totals.get("Cost of Goods Sold", 0)
     opex = sum(totals.get(l, 0) for l in [
@@ -78,6 +78,11 @@ def kpis(totals: dict) -> dict[str, float | None]:
         "Other Noncurrent Liabilities", 0)
     eq = totals.get("Common Stock", 0) + totals.get(
         "Retained Earnings, Beginning", 0) + ni
+    # Total assets = current assets + net PP&E + other noncurrent assets.
+    # This is the one balance-sheet total the other KPIs never needed:
+    # D/E divides liabilities by equity, but nothing divided by assets.
+    ta = ca + totals.get("Property & Equipment, net", 0) + totals.get(
+        "Other Noncurrent Assets", 0)
     return {
         "Net Profit Margin": (ni / rev) if rev else None,
         "Gross Margin": (gp / rev) if rev else None,
@@ -104,7 +109,14 @@ def kpis(totals: dict) -> dict[str, float | None]:
         # the principal due over the next 12 months, so one month of it is
         # CPLTD / 12, matching the monthly interest expense.
         "Debt Service Coverage": _dscr(ebit, ie, cpltd),
+        # Equity ratio: the share of total assets funded by equity rather
+        # than creditors. The complement of the liabilities share, so it
+        # is NOT 1 / (1 + D/E) unless the balance sheet balances -- when
+        # it does not, the two disagree and that disagreement is itself
+        # a check (see test). None when there are no assets to fund.
+        "Equity Ratio": (eq / ta) if ta else None,
         "_revenue": rev, "_net_income": ni, "_opex": opex, "_cash": cash,
+        "_total_assets": ta, "_equity": eq, "_total_liabilities": tl,
         "_ar": ar, "_inventory": inv, "_ap": ap, "_cogs": cogs,
         "_dio": (inv / (cogs * 12 / 365)) if cogs else None,
         "_dpo": (ap / (cogs * 12 / 365)) if cogs else None,
@@ -191,6 +203,11 @@ def red_flags(cur: dict, prior: dict | None,
         flags.append(("high" if dscr < 1.0 else "medium",
                       f"Debt service coverage {dscr:.2f}x -- earnings "
                       "barely cover interest plus scheduled principal."))
+    er = cur_k.get("Equity Ratio")
+    if er is not None and er < 0.30:
+        flags.append(("high" if er < 0.20 else "medium",
+                      f"Equity ratio {er:.1%} -- creditors fund more than "
+                      "70% of total assets."))
     dso = cur_k.get("Days Sales Outstanding")
     if dso is not None and dso > 45:
         sev = "medium" if dso <= 60 else "high"
@@ -340,6 +357,12 @@ def narrative_bullets(cur: dict, prior: dict | None,
         bullets.append(
             f"Debt service coverage is {dscr:.2f}x -- earnings cover "
             f"interest plus scheduled principal {dscr:.1f} times over."
+        )
+    er = cur_k.get("Equity Ratio")
+    if er is not None:
+        bullets.append(
+            f"Equity ratio is {er:.1%} -- equity funds {er:.1%} of total "
+            "assets, creditors fund the rest."
         )
     dso = cur_k.get("Days Sales Outstanding")
     if dso is not None:
