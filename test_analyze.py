@@ -169,6 +169,89 @@ class EquityRatioTests(unittest.TestCase):
         self.assertTrue(any("Equity ratio is 106.7%" in b for b in bullets))
 
 
+class ReturnOnAssetsTests(unittest.TestCase):
+    def totals_roa(self, **over):
+        # Same balance sheet as the equity-ratio tests: total assets
+        # 600 (CA 240 + PP&E 300 + other noncurrent 60); NI = GP 600
+        # - opex (100 salaries + 10 interest) = 490.
+        base = {
+            "Revenue": 1200.0,
+            "Cost of Goods Sold": 600.0,
+            "Salaries & Wages": 100.0,
+            "Interest Expense": 10.0,
+            "Cash & Cash Equivalents": 120.0,
+            "Accounts Receivable": 60.0,
+            "Inventory": 60.0,
+            "Accounts Payable": 30.0,
+            "Current Portion of Long-Term Debt": 120.0,
+            "Property & Equipment, net": 300.0,
+            "Other Noncurrent Assets": 60.0,
+            "Common Stock": 100.0,
+            "Retained Earnings, Beginning": 50.0,
+        }
+        base.update(over)
+        return base
+
+    def test_hand_math(self):
+        k = kpis(self.totals_roa())
+        self.assertAlmostEqual(k["_net_income"], 490.0)
+        self.assertAlmostEqual(k["_total_assets"], 600.0)
+        self.assertAlmostEqual(k["Return on Assets"], 490.0 / 600.0)
+
+    def test_no_assets_is_none(self):
+        t = self.totals_roa(**{
+            "Cash & Cash Equivalents": 0.0, "Accounts Receivable": 0.0,
+            "Inventory": 0.0, "Property & Equipment, net": 0.0,
+            "Other Noncurrent Assets": 0.0})
+        self.assertIsNone(kpis(t)["Return on Assets"])
+
+    def test_dupont_identity(self):
+        # ROA must equal net margin x asset turnover (revenue / assets).
+        k = kpis(self.totals_roa())
+        turnover = k["_revenue"] / k["_total_assets"]
+        self.assertAlmostEqual(k["Return on Assets"],
+                               k["Net Profit Margin"] * turnover)
+
+    def test_roe_cross_check_via_equity_ratio(self):
+        # ROA / equity ratio = net income / equity (return on equity).
+        k = kpis(self.totals_roa())
+        self.assertAlmostEqual(k["Return on Assets"] / k["Equity Ratio"],
+                               k["_net_income"] / k["_equity"])
+
+    def test_red_flag_high_when_negative(self):
+        # Salaries 700 -> NI = 600 - 710 = -110; ROA = -110/600 < 0.
+        t = self.totals_roa(**{"Salaries & Wages": 700.0})
+        k = kpis(t)
+        self.assertLess(k["Return on Assets"], 0)
+        roa_flags = [(s, m) for s, m in red_flags(t, None, k, None)
+                     if "Return on assets" in m]
+        self.assertEqual(len(roa_flags), 1)
+        self.assertEqual(roa_flags[0][0], "high")
+
+    def test_red_flag_medium_between_0_and_5_pct(self):
+        # Salaries 580 -> NI = 600 - 590 = 10; ROA = 10/600 = 1.7%.
+        t = self.totals_roa(**{"Salaries & Wages": 580.0})
+        k = kpis(t)
+        self.assertAlmostEqual(k["Return on Assets"], 10.0 / 600.0)
+        roa_flags = [(s, m) for s, m in red_flags(t, None, k, None)
+                     if "Return on assets" in m]
+        self.assertEqual(len(roa_flags), 1)
+        self.assertEqual(roa_flags[0][0], "medium")
+
+    def test_no_flag_at_or_above_5_pct(self):
+        t = self.totals_roa()
+        k = kpis(t)
+        msgs = [m for _s, m in red_flags(t, None, k, None)]
+        self.assertFalse(any("Return on assets" in m for m in msgs))
+
+    def test_narrative_bullet(self):
+        t = self.totals_roa()
+        k = kpis(t)
+        bullets = narrative_bullets(t, None, k, None)
+        self.assertTrue(any("Return on assets is 81.7%" in b
+                            for b in bullets))
+
+
 class ExistingKpiRegressionTests(unittest.TestCase):
     def test_quick_ratio_and_ccc_unchanged(self):
         k = kpis(totals())

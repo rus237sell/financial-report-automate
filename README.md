@@ -44,18 +44,30 @@ analysis.
   satisfy equity ratio = 1 / (1 + debt-to-equity); a test checks that
   identity, so the two solvency KPIs cross-validate each other
   (`test_analyze.py`, 16 tests).
+- **v7** — Return on Assets as 14th dashboard KPI (net income / total
+  assets — the earnings counterpart to the equity ratio, on the same
+  denominator), with red-flag rules below 5% (high when negative), a
+  narrative bullet, and SQL parity in both `analysis_queries.sql` and
+  `db.py` (`kpi_inputs` now also returns net income and the ratio).
+  It must satisfy the DuPont identity ROA = net margin x asset
+  turnover, and ROA / equity ratio = return on equity, so it
+  cross-checks the margin and solvency KPIs (`test_analyze.py`,
+  24 tests). Equity Ratio bands on the Adjustments tab now display
+  as percents like the other margin KPIs.
 
 **Short results** (fictional "Acme Foods Co." sample data): net income
 $123,800 on $849,500 revenue (14.6% margin); beat budget by 9.6%; dashboard
-grades B/A/B/C/A/C/A/A/A/A/A/A/B on default bands; interest coverage 12.1x; cash
+grades B/A/B/C/A/C/A/A/A/A/A/A/B/A on default bands; interest coverage 12.1x; cash
 runway 7.1 months; days sales outstanding 7 days; cash conversion cycle
 9 days (7 to collect + 9 of inventory − 7 to pay suppliers); quick ratio
 1.82 (cash + receivables cover current liabilities without selling
 inventory); debt service coverage 9.56x (earnings cover interest plus
 scheduled principal 9.6 times over); equity ratio 43.3% ($297,500 of
 equity on $686,500 of assets — creditors fund the other 56.7%, and it
-checks against debt-to-equity: 1 / (1 + 1.31) = 43.3%); SCF reconciles
-to the penny.
+checks against debt-to-equity: 1 / (1 + 1.31) = 43.3%); return on
+assets 18.0% ($123,800 of net income on $686,500 of assets — it checks
+against the DuPont identity: 14.6% net margin x 1.24x asset turnover
+= 18.0%); SCF reconciles to the penny.
 
 ![KPI Dashboard](docs/dashboard.png)
 
@@ -100,5 +112,5 @@ gross margin A ≥ 45% · opex ratio A ≤ 30% · current ratio A ≥ 2.0 ·
 debt/equity A ≤ 1.0 · interest coverage A ≥ 5x · cash runway A ≥ 6 mo. ·
 days sales outstanding A ≤ 45 days · cash conversion cycle A ≤ 30 days ·
 quick ratio A ≥ 1.0 · debt service coverage A ≥ 1.50x ·
-equity ratio A ≥ 50%.
+equity ratio A ≥ 50% · return on assets A ≥ 10%.
 Change any band and the Dashboard re-scores live.

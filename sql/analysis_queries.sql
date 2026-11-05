@@ -117,7 +117,15 @@ SELECT
        ELSE (common_stock + retained_begin
              + (revenue - cogs - opex + other_net))
             / (current_assets + ppe_net + other_noncurrent_assets)
-  END AS equity_ratio
+  END AS equity_ratio,
+  -- Return on assets: net income / total assets, on the same
+  -- denominator as equity_ratio. Must satisfy the DuPont identity
+  -- ROA = net_profit_margin x (revenue / total assets).
+  CASE WHEN COALESCE(current_assets, 0) + COALESCE(ppe_net, 0)
+            + COALESCE(other_noncurrent_assets, 0) = 0 THEN NULL
+       ELSE (revenue - cogs - opex + other_net)
+            / (current_assets + ppe_net + other_noncurrent_assets)
+  END AS return_on_assets
 FROM t;
 
 -- 4. Top movers vs prior (the story behind the variance) -----------------

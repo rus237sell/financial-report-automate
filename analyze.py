@@ -48,7 +48,7 @@ def variance_rows(cur: dict, prior: dict | None,
 
 
 def kpis(totals: dict) -> dict[str, float | None]:
-    """The thirteen dashboard KPIs from statement-line totals."""
+    """The fourteen dashboard KPIs from statement-line totals."""
     rev = totals.get("Revenue", 0) or 0
     gp = totals.get("Revenue", 0) - totals.get("Cost of Goods Sold", 0)
     opex = sum(totals.get(l, 0) for l in [
@@ -115,6 +115,14 @@ def kpis(totals: dict) -> dict[str, float | None]:
         # it does not, the two disagree and that disagreement is itself
         # a check (see test). None when there are no assets to fund.
         "Equity Ratio": (eq / ta) if ta else None,
+        # Return on assets: net income per dollar of total assets -- the
+        # earnings counterpart to the equity ratio's funding share, on
+        # the same denominator. By construction it must satisfy the
+        # DuPont identity ROA = net margin x (revenue / total assets),
+        # and ROA / equity ratio = return on equity, so it cross-checks
+        # both the margin KPIs and the v6 solvency pair. None when
+        # there are no assets to earn on.
+        "Return on Assets": (ni / ta) if ta else None,
         "_revenue": rev, "_net_income": ni, "_opex": opex, "_cash": cash,
         "_total_assets": ta, "_equity": eq, "_total_liabilities": tl,
         "_ar": ar, "_inventory": inv, "_ap": ap, "_cogs": cogs,
@@ -208,6 +216,11 @@ def red_flags(cur: dict, prior: dict | None,
         flags.append(("high" if er < 0.20 else "medium",
                       f"Equity ratio {er:.1%} -- creditors fund more than "
                       "70% of total assets."))
+    roa = cur_k.get("Return on Assets")
+    if roa is not None and roa < 0.05:
+        flags.append(("high" if roa < 0 else "medium",
+                      f"Return on assets {roa:.1%} -- assets are "
+                      "earning little or nothing this period."))
     dso = cur_k.get("Days Sales Outstanding")
     if dso is not None and dso > 45:
         sev = "medium" if dso <= 60 else "high"
@@ -363,6 +376,12 @@ def narrative_bullets(cur: dict, prior: dict | None,
         bullets.append(
             f"Equity ratio is {er:.1%} -- equity funds {er:.1%} of total "
             "assets, creditors fund the rest."
+        )
+    roa = cur_k.get("Return on Assets")
+    if roa is not None:
+        bullets.append(
+            f"Return on assets is {roa:.1%} -- each dollar of assets "
+            f"earned ${roa:.2f} of net income this period."
         )
     dso = cur_k.get("Days Sales Outstanding")
     if dso is not None:

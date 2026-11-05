@@ -229,7 +229,9 @@ def kpi_inputs(conn: sqlite3.Connection, period_label: str) -> dict:
     noncurrent assets) and equity (common stock + beginning retained
     earnings + net income, where net income is revenue - COGS - opex
     + other net) so the Equity Ratio can be formed from this one row:
-    equity / total_assets, or None when total_assets is 0.
+    equity / total_assets, or None when total_assets is 0. The same
+    row also yields return_on_assets: net_income / total_assets, or
+    None when total_assets is 0.
     """
     row = conn.execute(KPI_SQL, {"period": period_label}).fetchone()
     if not row:
@@ -244,4 +246,7 @@ def kpi_inputs(conn: sqlite3.Connection, period_label: str) -> dict:
                      + (out.get("retained_begin") or 0) + net_income)
     out["equity_ratio"] = (out["equity"] / out["total_assets"]
                            if out["total_assets"] else None)
+    out["net_income"] = net_income
+    out["return_on_assets"] = (net_income / out["total_assets"]
+                               if out["total_assets"] else None)
     return out
