@@ -125,7 +125,18 @@ SELECT
             + COALESCE(other_noncurrent_assets, 0) = 0 THEN NULL
        ELSE (revenue - cogs - opex + other_net)
             / (current_assets + ppe_net + other_noncurrent_assets)
-  END AS return_on_assets
+  END AS return_on_assets,
+  -- Return on equity: net income / total equity, on the same equity
+  -- as equity_ratio. Must satisfy ROE = return_on_assets /
+  -- equity_ratio, and the three-factor DuPont identity ROE =
+  -- net_profit_margin x (revenue / total assets) x (total assets /
+  -- total equity).
+  CASE WHEN COALESCE(common_stock, 0) + COALESCE(retained_begin, 0)
+            + (revenue - cogs - opex + other_net) = 0 THEN NULL
+       ELSE (revenue - cogs - opex + other_net)
+            / (common_stock + retained_begin
+               + (revenue - cogs - opex + other_net))
+  END AS return_on_equity
 FROM t;
 
 -- 4. Top movers vs prior (the story behind the variance) -----------------

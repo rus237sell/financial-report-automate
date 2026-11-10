@@ -178,10 +178,11 @@ KPI_DEFS = [
     ("Debt Service Coverage", 1.50, 0.25, 0.50, 0.75, "higher"),  # EBIT / (interest + CPLTD/12)
     ("Equity Ratio", 0.50, 0.10, 0.20, 0.30, "higher"),  # total equity / total assets
     ("Return on Assets", 0.10, 0.02, 0.04, 0.06, "higher"),  # net income / total assets
+    ("Return on Equity", 0.15, 0.03, 0.06, 0.09, "higher"),  # net income / total equity
 ]
-ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:17
+ADJ_FIRST_ROW = 4  # KPI rows live on Adjustments!4:18
 
-# Dashboard KPI rows (9..22) map to the KPI_DEFS order above.
+# Dashboard KPI rows (9..23) map to the KPI_DEFS order above.
 # Rows 3-6 are the headline strip, row 8 is the KPI table header.
 DASH_FIRST_ROW = 9
 DASH_HEADER_ROW = 8
@@ -497,7 +498,7 @@ def build_adjustments(wb, data):
 
     pct_metrics = {"Net Profit Margin", "Gross Margin", "Operating Margin",
                    "Operating Expense Ratio", "Equity Ratio",
-                   "Return on Assets"}
+                   "Return on Assets", "Return on Equity"}
     for i, (metric, target, tb, tc, td, direction) in enumerate(KPI_DEFS):
         r = ADJ_FIRST_ROW + i
         ws.cell(row=r, column=1, value=metric).font = BOLD_FONT
@@ -660,6 +661,8 @@ def build_dashboard(wb, data):
         "=IF('Balance Sheet'!B14=0,\"N/A\",'Balance Sheet'!B29/'Balance Sheet'!B14)",
         # Return on Assets = Net Income / Total Assets
         "=IF('Balance Sheet'!B14=0,\"N/A\",'P&L'!B22/'Balance Sheet'!B14)",
+        # Return on Equity = Net Income / Total Equity
+        "=IF('Balance Sheet'!B29=0,\"N/A\",'P&L'!B22/'Balance Sheet'!B29)",
     ]
     notes = [
         "Board target -- the headline number",
@@ -676,13 +679,14 @@ def build_dashboard(wb, data):
         "Earnings cover interest + scheduled principal (higher is better)",
         "Share of assets funded by equity, not creditors (higher is better)",
         "Earnings generated per dollar of assets (higher is better)",
+        "Earnings generated per dollar of equity (higher is better)",
     ]
     # Actual/Target number formats: units ride inside the format so a
     # value cannot be misread (7.09 mo, 6.7 days, 12.11x).
     value_fmts = [PCT_FMT, PCT_FMT, PCT_FMT, PCT_FMT,
                   RATIO_FMT, '0.00"x"', '0.00"x"', '0.00" mo"',
                   '0.0" days"', '0.0" days"', RATIO_FMT, '0.00"x"',
-                  PCT_FMT, PCT_FMT]
+                  PCT_FMT, PCT_FMT, PCT_FMT]
 
     for i, (metric, _t, _tb, _tc, _td, direction) in enumerate(KPI_DEFS):
         r = DASH_FIRST_ROW + i
