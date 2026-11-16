@@ -63,10 +63,19 @@ analysis.
   ROE = net margin x asset turnover x (assets / equity), so it
   cross-checks the margin, turnover, and solvency KPIs at once
   (`test_analyze.py`, 32 tests).
+- **v9** — Asset Turnover as 16th dashboard KPI (revenue / total
+  assets — the middle DuPont factor, previously only implied inside
+  the ROA and ROE identities), with red-flag rules below 0.50x
+  (high below 0.25x), a narrative bullet, and SQL parity in both
+  `analysis_queries.sql` and `db.py` (`kpi_inputs` now also returns
+  the ratio). It must satisfy ROA = net margin x asset turnover and
+  the three-factor DuPont identity for ROE, so it separates earning
+  a lot per sale from selling a lot per asset dollar
+  (`test_analyze.py`, 40 tests).
 
 **Short results** (fictional "Acme Foods Co." sample data): net income
 $123,800 on $849,500 revenue (14.6% margin); beat budget by 9.6%; dashboard
-grades B/A/B/C/A/C/A/A/A/A/A/A/B/A/A on default bands; interest coverage 12.1x; cash
+grades B/A/B/C/A/C/A/A/A/A/A/A/B/A/A/A on default bands; interest coverage 12.1x; cash
 runway 7.1 months; days sales outstanding 7 days; cash conversion cycle
 9 days (7 to collect + 9 of inventory − 7 to pay suppliers); quick ratio
 1.82 (cash + receivables cover current liabilities without selling
@@ -78,7 +87,10 @@ assets 18.0% ($123,800 of net income on $686,500 of assets — it checks
 against the DuPont identity: 14.6% net margin x 1.24x asset turnover
 = 18.0%); return on equity 41.6% ($123,800 of net income on $297,500
 of equity — it checks against return on assets / equity ratio:
-18.0% / 43.3% = 41.6%); SCF reconciles to the penny.
+18.0% / 43.3% = 41.6%); asset turnover 1.24x ($849,500 of revenue on
+$686,500 of assets — it checks against the DuPont identity: 14.6%
+net margin x 1.24x = 18.0% return on assets); SCF reconciles to
+the penny.
 
 ![KPI Dashboard](docs/dashboard.png)
 
@@ -124,5 +136,5 @@ debt/equity A ≤ 1.0 · interest coverage A ≥ 5x · cash runway A ≥ 6 mo. �
 days sales outstanding A ≤ 45 days · cash conversion cycle A ≤ 30 days ·
 quick ratio A ≥ 1.0 · debt service coverage A ≥ 1.50x ·
 equity ratio A ≥ 50% · return on assets A ≥ 10% ·
-return on equity A ≥ 15%.
+return on equity A ≥ 15% · asset turnover A ≥ 1.00x.
 Change any band and the Dashboard re-scores live.

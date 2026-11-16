@@ -48,7 +48,7 @@ def variance_rows(cur: dict, prior: dict | None,
 
 
 def kpis(totals: dict) -> dict[str, float | None]:
-    """The fifteen dashboard KPIs from statement-line totals."""
+    """The sixteen dashboard KPIs from statement-line totals."""
     rev = totals.get("Revenue", 0) or 0
     gp = totals.get("Revenue", 0) - totals.get("Cost of Goods Sold", 0)
     opex = sum(totals.get(l, 0) for l in [
@@ -130,6 +130,14 @@ def kpis(totals: dict) -> dict[str, float | None]:
         # so it cross-checks the margin, turnover, and solvency KPIs at
         # once. None when there is no equity to earn on.
         "Return on Equity": (ni / eq) if eq else None,
+        # Asset turnover: revenue per dollar of total assets -- the
+        # middle DuPont factor, previously only implied inside the ROA
+        # and ROE identities. On its own it separates "earns a lot per
+        # sale" from "sells a lot per asset dollar": ROA must equal
+        # net margin x asset turnover, and ROE must equal ROA x
+        # (assets / equity), so it cross-checks both. None when there
+        # are no assets to turn over.
+        "Asset Turnover": (rev / ta) if ta else None,
         "_revenue": rev, "_net_income": ni, "_opex": opex, "_cash": cash,
         "_total_assets": ta, "_equity": eq, "_total_liabilities": tl,
         "_ar": ar, "_inventory": inv, "_ap": ap, "_cogs": cogs,
@@ -233,6 +241,11 @@ def red_flags(cur: dict, prior: dict | None,
         flags.append(("high" if roe < 0 else "medium",
                       f"Return on equity {roe:.1%} -- equity is "
                       "earning little or nothing this period."))
+    at = cur_k.get("Asset Turnover")
+    if at is not None and at < 0.50:
+        flags.append(("high" if at < 0.25 else "medium",
+                      f"Asset turnover {at:.2f}x -- assets are "
+                      "generating little revenue this period."))
     dso = cur_k.get("Days Sales Outstanding")
     if dso is not None and dso > 45:
         sev = "medium" if dso <= 60 else "high"
@@ -400,6 +413,12 @@ def narrative_bullets(cur: dict, prior: dict | None,
         bullets.append(
             f"Return on equity is {roe:.1%} -- each dollar of equity "
             f"earned ${roe:.2f} of net income this period."
+        )
+    at = cur_k.get("Asset Turnover")
+    if at is not None:
+        bullets.append(
+            f"Asset turnover is {at:.2f}x -- each dollar of assets "
+            f"generated ${at:.2f} of revenue this period."
         )
     dso = cur_k.get("Days Sales Outstanding")
     if dso is not None:

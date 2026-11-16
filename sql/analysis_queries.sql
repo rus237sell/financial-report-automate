@@ -136,7 +136,15 @@ SELECT
        ELSE (revenue - cogs - opex + other_net)
             / (common_stock + retained_begin
                + (revenue - cogs - opex + other_net))
-  END AS return_on_equity
+  END AS return_on_equity,
+  -- Asset turnover: revenue / total assets, on the same denominator
+  -- as return_on_assets. Must satisfy the DuPont identity
+  -- return_on_assets = net_profit_margin x asset_turnover.
+  CASE WHEN COALESCE(current_assets, 0) + COALESCE(ppe_net, 0)
+            + COALESCE(other_noncurrent_assets, 0) = 0 THEN NULL
+       ELSE revenue
+            / (current_assets + ppe_net + other_noncurrent_assets)
+  END AS asset_turnover
 FROM t;
 
 -- 4. Top movers vs prior (the story behind the variance) -----------------

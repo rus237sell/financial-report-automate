@@ -339,6 +339,88 @@ class ReturnOnEquityTests(unittest.TestCase):
                             for b in bullets))
 
 
+class AssetTurnoverTests(unittest.TestCase):
+    def totals_at(self, **over):
+        # Same balance sheet as the ROA/ROE tests: total assets 600
+        # (CA 240 + PP&E 300 + other noncurrent 60); revenue 1200.
+        base = {
+            "Revenue": 1200.0,
+            "Cost of Goods Sold": 600.0,
+            "Salaries & Wages": 100.0,
+            "Interest Expense": 10.0,
+            "Cash & Cash Equivalents": 120.0,
+            "Accounts Receivable": 60.0,
+            "Inventory": 60.0,
+            "Accounts Payable": 30.0,
+            "Current Portion of Long-Term Debt": 120.0,
+            "Property & Equipment, net": 300.0,
+            "Other Noncurrent Assets": 60.0,
+            "Common Stock": 100.0,
+            "Retained Earnings, Beginning": 50.0,
+        }
+        base.update(over)
+        return base
+
+    def test_hand_math(self):
+        k = kpis(self.totals_at())
+        self.assertAlmostEqual(k["_total_assets"], 600.0)
+        self.assertAlmostEqual(k["Asset Turnover"], 1200.0 / 600.0)
+
+    def test_no_assets_is_none(self):
+        t = self.totals_at(**{
+            "Cash & Cash Equivalents": 0.0, "Accounts Receivable": 0.0,
+            "Inventory": 0.0, "Property & Equipment, net": 0.0,
+            "Other Noncurrent Assets": 0.0})
+        self.assertIsNone(kpis(t)["Asset Turnover"])
+
+    def test_dupont_identity_roa(self):
+        # ROA must equal net margin x asset turnover.
+        k = kpis(self.totals_at())
+        self.assertAlmostEqual(k["Return on Assets"],
+                               k["Net Profit Margin"] * k["Asset Turnover"])
+
+    def test_dupont_three_factor_via_roe(self):
+        # ROE = net margin x asset turnover x (assets / equity).
+        k = kpis(self.totals_at())
+        leverage = k["_total_assets"] / k["_equity"]
+        self.assertAlmostEqual(
+            k["Return on Equity"],
+            k["Net Profit Margin"] * k["Asset Turnover"] * leverage)
+
+    def test_red_flag_high_below_0_25(self):
+        # Revenue 120 / assets 600 = 0.20x.
+        t = self.totals_at(**{"Revenue": 120.0})
+        k = kpis(t)
+        self.assertAlmostEqual(k["Asset Turnover"], 0.20)
+        at_flags = [(s, m) for s, m in red_flags(t, None, k, None)
+                    if "Asset turnover" in m]
+        self.assertEqual(len(at_flags), 1)
+        self.assertEqual(at_flags[0][0], "high")
+
+    def test_red_flag_medium_between_0_25_and_0_50(self):
+        # Revenue 240 / assets 600 = 0.40x.
+        t = self.totals_at(**{"Revenue": 240.0})
+        k = kpis(t)
+        self.assertAlmostEqual(k["Asset Turnover"], 0.40)
+        at_flags = [(s, m) for s, m in red_flags(t, None, k, None)
+                    if "Asset turnover" in m]
+        self.assertEqual(len(at_flags), 1)
+        self.assertEqual(at_flags[0][0], "medium")
+
+    def test_no_flag_at_or_above_0_50(self):
+        t = self.totals_at()
+        k = kpis(t)
+        msgs = [m for _s, m in red_flags(t, None, k, None)]
+        self.assertFalse(any("Asset turnover" in m for m in msgs))
+
+    def test_narrative_bullet(self):
+        t = self.totals_at()
+        k = kpis(t)
+        bullets = narrative_bullets(t, None, k, None)
+        self.assertTrue(any("Asset turnover is 2.00x" in b
+                            for b in bullets))
+
+
 class ExistingKpiRegressionTests(unittest.TestCase):
     def test_quick_ratio_and_ccc_unchanged(self):
         k = kpis(totals())

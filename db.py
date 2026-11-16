@@ -232,7 +232,8 @@ def kpi_inputs(conn: sqlite3.Connection, period_label: str) -> dict:
     equity / total_assets, or None when total_assets is 0. The same
     row also yields return_on_assets: net_income / total_assets, or
     None when total_assets is 0, and return_on_equity: net_income /
-    equity, or None when equity is 0.
+    equity, or None when equity is 0, and asset_turnover: revenue /
+    total_assets, or None when total_assets is 0.
     """
     row = conn.execute(KPI_SQL, {"period": period_label}).fetchone()
     if not row:
@@ -252,4 +253,6 @@ def kpi_inputs(conn: sqlite3.Connection, period_label: str) -> dict:
                                if out["total_assets"] else None)
     out["return_on_equity"] = (net_income / out["equity"]
                                if out["equity"] else None)
+    out["asset_turnover"] = ((out.get("revenue") or 0) / out["total_assets"]
+                             if out["total_assets"] else None)
     return out
