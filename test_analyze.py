@@ -421,6 +421,93 @@ class AssetTurnoverTests(unittest.TestCase):
                             for b in bullets))
 
 
+class DebtRatioTests(unittest.TestCase):
+    def totals_dr(self, **over):
+        # Same balance sheet as the equity-ratio tests: total assets
+        # 600 (CA 240 + PP&E 300 + other noncurrent 60); liabilities
+        # AP 30 + CPLTD 120 = 150 with no long-term debt.
+        base = {
+            "Revenue": 1200.0,
+            "Cost of Goods Sold": 600.0,
+            "Salaries & Wages": 100.0,
+            "Interest Expense": 10.0,
+            "Cash & Cash Equivalents": 120.0,
+            "Accounts Receivable": 60.0,
+            "Inventory": 60.0,
+            "Accounts Payable": 30.0,
+            "Current Portion of Long-Term Debt": 120.0,
+            "Property & Equipment, net": 300.0,
+            "Other Noncurrent Assets": 60.0,
+            "Common Stock": 100.0,
+            "Retained Earnings, Beginning": 50.0,
+        }
+        base.update(over)
+        return base
+
+    def test_hand_math(self):
+        k = kpis(self.totals_dr())
+        self.assertAlmostEqual(k["_total_liabilities"], 150.0)
+        self.assertAlmostEqual(k["_total_assets"], 600.0)
+        self.assertAlmostEqual(k["Debt Ratio"], 150.0 / 600.0)
+
+    def test_no_assets_is_none(self):
+        t = self.totals_dr(**{
+            "Cash & Cash Equivalents": 0.0, "Accounts Receivable": 0.0,
+            "Inventory": 0.0, "Property & Equipment, net": 0.0,
+            "Other Noncurrent Assets": 0.0})
+        self.assertIsNone(kpis(t)["Debt Ratio"])
+
+    def test_balanced_complement_identity(self):
+        # Balanced: liabilities 350 (AP 30 + CPLTD 120 + LTD 200),
+        # equity 250, assets 600 -> DR + ER must equal 1.
+        t = self.totals_dr(**{"Long-Term Debt": 200.0,
+                              "Common Stock": -300.0,
+                              "Retained Earnings, Beginning": 60.0})
+        k = kpis(t)
+        self.assertAlmostEqual(k["Debt Ratio"] + k["Equity Ratio"], 1.0)
+
+    def test_debt_to_equity_identity(self):
+        # On a balanced sheet DR must equal (D/E) / (1 + D/E).
+        t = self.totals_dr(**{"Long-Term Debt": 200.0,
+                              "Common Stock": -300.0,
+                              "Retained Earnings, Beginning": 60.0})
+        k = kpis(t)
+        dte = k["Debt to Equity"]
+        self.assertAlmostEqual(k["Debt Ratio"], dte / (1 + dte))
+
+    def test_red_flag_medium_between_70_and_80_pct(self):
+        # LTD 300 -> liabilities 450 / assets 600 = 75.0%.
+        t = self.totals_dr(**{"Long-Term Debt": 300.0})
+        k = kpis(t)
+        self.assertAlmostEqual(k["Debt Ratio"], 0.75)
+        dr_flags = [(s, m) for s, m in red_flags(t, None, k, None)
+                    if "Debt ratio" in m]
+        self.assertEqual(len(dr_flags), 1)
+        self.assertEqual(dr_flags[0][0], "medium")
+
+    def test_red_flag_high_above_80_pct(self):
+        # LTD 360 -> liabilities 510 / assets 600 = 85.0%.
+        t = self.totals_dr(**{"Long-Term Debt": 360.0})
+        k = kpis(t)
+        self.assertAlmostEqual(k["Debt Ratio"], 0.85)
+        dr_flags = [(s, m) for s, m in red_flags(t, None, k, None)
+                    if "Debt ratio" in m]
+        self.assertEqual(len(dr_flags), 1)
+        self.assertEqual(dr_flags[0][0], "high")
+
+    def test_no_flag_at_or_below_70_pct(self):
+        t = self.totals_dr()
+        k = kpis(t)
+        msgs = [m for _s, m in red_flags(t, None, k, None)]
+        self.assertFalse(any("Debt ratio" in m for m in msgs))
+
+    def test_narrative_bullet(self):
+        t = self.totals_dr()
+        k = kpis(t)
+        bullets = narrative_bullets(t, None, k, None)
+        self.assertTrue(any("Debt ratio is 25.0%" in b for b in bullets))
+
+
 class ExistingKpiRegressionTests(unittest.TestCase):
     def test_quick_ratio_and_ccc_unchanged(self):
         k = kpis(totals())

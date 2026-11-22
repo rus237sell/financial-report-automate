@@ -144,7 +144,16 @@ SELECT
             + COALESCE(other_noncurrent_assets, 0) = 0 THEN NULL
        ELSE revenue
             / (current_assets + ppe_net + other_noncurrent_assets)
-  END AS asset_turnover
+  END AS asset_turnover,
+  -- Debt ratio: total liabilities / total assets, on the same
+  -- denominator as equity_ratio. On a balanced sheet it must
+  -- satisfy debt_ratio + equity_ratio = 1 and debt_ratio =
+  -- debt_to_equity / (1 + debt_to_equity).
+  CASE WHEN COALESCE(current_assets, 0) + COALESCE(ppe_net, 0)
+            + COALESCE(other_noncurrent_assets, 0) = 0 THEN NULL
+       ELSE total_liab
+            / (current_assets + ppe_net + other_noncurrent_assets)
+  END AS debt_ratio
 FROM t;
 
 -- 4. Top movers vs prior (the story behind the variance) -----------------

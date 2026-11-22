@@ -48,7 +48,7 @@ def variance_rows(cur: dict, prior: dict | None,
 
 
 def kpis(totals: dict) -> dict[str, float | None]:
-    """The sixteen dashboard KPIs from statement-line totals."""
+    """The seventeen dashboard KPIs from statement-line totals."""
     rev = totals.get("Revenue", 0) or 0
     gp = totals.get("Revenue", 0) - totals.get("Cost of Goods Sold", 0)
     opex = sum(totals.get(l, 0) for l in [
@@ -138,6 +138,13 @@ def kpis(totals: dict) -> dict[str, float | None]:
         # (assets / equity), so it cross-checks both. None when there
         # are no assets to turn over.
         "Asset Turnover": (rev / ta) if ta else None,
+        # Debt ratio: total liabilities per dollar of total assets --
+        # the creditor counterpart to the equity ratio. On a balanced
+        # sheet debt ratio + equity ratio must equal 1, and debt ratio
+        # must equal (D/E) / (1 + D/E), so it cross-checks both
+        # solvency KPIs; off a balanced sheet the gap vs 1 - equity
+        # ratio is itself a check. None when there are no assets.
+        "Debt Ratio": (tl / ta) if ta else None,
         "_revenue": rev, "_net_income": ni, "_opex": opex, "_cash": cash,
         "_total_assets": ta, "_equity": eq, "_total_liabilities": tl,
         "_ar": ar, "_inventory": inv, "_ap": ap, "_cogs": cogs,
@@ -241,6 +248,11 @@ def red_flags(cur: dict, prior: dict | None,
         flags.append(("high" if roe < 0 else "medium",
                       f"Return on equity {roe:.1%} -- equity is "
                       "earning little or nothing this period."))
+    dr = cur_k.get("Debt Ratio")
+    if dr is not None and dr > 0.70:
+        flags.append(("high" if dr > 0.80 else "medium",
+                      f"Debt ratio {dr:.1%} -- creditors fund more than "
+                      "70% of total assets."))
     at = cur_k.get("Asset Turnover")
     if at is not None and at < 0.50:
         flags.append(("high" if at < 0.25 else "medium",
@@ -419,6 +431,12 @@ def narrative_bullets(cur: dict, prior: dict | None,
         bullets.append(
             f"Asset turnover is {at:.2f}x -- each dollar of assets "
             f"generated ${at:.2f} of revenue this period."
+        )
+    dr = cur_k.get("Debt Ratio")
+    if dr is not None:
+        bullets.append(
+            f"Debt ratio is {dr:.1%} -- creditors fund {dr:.1%} of total "
+            "assets, equity funds the rest."
         )
     dso = cur_k.get("Days Sales Outstanding")
     if dso is not None:
